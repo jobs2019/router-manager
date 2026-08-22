@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/router_profile.dart';
 import '../services/router_discovery.dart';
-import 'huawei_test_screen.dart';
+import 'huawei_dashboard_screen.dart';
 import 'login_screen.dart';
 
 class RouterIpScreen extends StatefulWidget {
@@ -91,7 +91,7 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
     if (type == RouterType.huaweiEg8145v5) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => HuaweiTestScreen(
+          builder: (_) => HuaweiDashboardScreen(
             routerIp: ip,
           ),
         ),
