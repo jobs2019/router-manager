@@ -63,13 +63,17 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       _accessControlEntryIndices = null;
       _accessControlError = null;
     });
+
     try {
       await _api.login(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
       );
       if (!mounted) return;
+
       setState(() => _loggedIn = true);
+      _showLoginSuccessMessage();
+
       await Future.wait([
         _loadWan(),
         _loadAccessControlSummary(),
@@ -78,8 +82,40 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       if (!mounted) return;
       setState(() => _error = _cleanError(e));
     }
+
     if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  void _showLoginSuccessMessage() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          backgroundColor: const Color(0xFFE8F5E9),
+          content: const Row(
+            children: [
+              Icon(Icons.verified_user_rounded, color: Colors.green),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Logged in successfully. Huawei management features are available.',
+                  style: TextStyle(
+                    color: Color(0xFF1B5E20),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   Future<void> _logout() async {
@@ -161,13 +197,13 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '');
 
   Widget _sectionTitle(String title, String subtitle) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 4),
-      Text(subtitle, style: TextStyle(color: Colors.grey.shade700)),
-    ],
-  );
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(color: Colors.grey.shade700)),
+        ],
+      );
 
   Widget _buildRouterHeader() {
     return Container(
@@ -272,16 +308,10 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
               children: [
                 const Icon(Icons.public_rounded, size: 20),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'WAN Information',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
+                const Expanded(
+                  child: Text('WAN Information', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 ),
-                Text(
-                  '${_wanData!.length}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
-                ),
+                Text('${_wanData!.length}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
                 IconButton(
                   tooltip: 'Refresh',
                   visualDensity: VisualDensity.compact,
@@ -312,17 +342,9 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                wan['wanName'] ?? '--',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                              ),
+                              Text(wan['wanName'] ?? '--', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                               const SizedBox(height: 3),
-                              Text(
-                                'IP $ip  •  VLAN $vlan',
-                                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
-                              ),
+                              Text('IP $ip  •  VLAN $vlan', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
                             ],
                           ),
                         ),
@@ -333,14 +355,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                             color: connected ? Colors.green.withValues(alpha: 0.10) : Colors.orange.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              color: connected ? Colors.green.shade700 : Colors.orange.shade800,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                          child: Text(status, style: TextStyle(color: connected ? Colors.green.shade700 : Colors.orange.shade800, fontSize: 10.5, fontWeight: FontWeight.w700)),
                         ),
                       ],
                     ),
@@ -369,14 +384,10 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       statusText = 'Status unavailable';
       statusColor = Colors.orange.shade800;
     } else if (enabled == true) {
-      statusText = hasEntries
-          ? 'Enabled  •  ${entries!.length} rule${entries.length == 1 ? '' : 's'}'
-          : 'Enabled  •  No rule';
+      statusText = hasEntries ? 'Enabled  •  ${entries!.length} rule${entries.length == 1 ? '' : 's'}' : 'Enabled  •  No rule';
       statusColor = hasEntries ? Colors.green.shade700 : Colors.orange.shade800;
     } else if (enabled == false) {
-      statusText = hasEntries
-          ? 'Disabled  •  ${entries!.length} saved rule${entries.length == 1 ? '' : 's'}'
-          : 'Disabled  •  No rule';
+      statusText = hasEntries ? 'Disabled  •  ${entries!.length} saved rule${entries.length == 1 ? '' : 's'}' : 'Disabled  •  No rule';
       statusColor = hasEntries ? Colors.orange.shade800 : Colors.grey.shade700;
     } else {
       statusText = 'Status unavailable';
@@ -412,10 +423,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
             Container(
               width: 46,
               height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xFFB00020).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
+              decoration: BoxDecoration(color: const Color(0xFFB00020).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
               child: const Icon(Icons.devices_rounded, color: Color(0xFFB00020)),
             ),
             const SizedBox(width: 12),
@@ -428,41 +436,19 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                   Row(
                     children: [
                       if (!_loadingAccessSummary && _accessControlError == null) ...[
-                        Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
+                        Container(width: 9, height: 9, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
                         const SizedBox(width: 7),
                       ],
                       Flexible(
-                        child: Text(
-                          statusText,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: statusColor,
-                          ),
-                        ),
+                        child: Text(statusText, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: statusColor)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    'Manage device access and access-control rules',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
+                  Text('Manage device access and access-control rules', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
                   if (_accessControlError != null) ...[
                     const SizedBox(height: 3),
-                    Text(
-                      'Tap to open and diagnose.',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                    ),
+                    Text('Tap to open and diagnose.', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                   ],
                 ],
               ),
@@ -563,18 +549,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                 ),
               ],
               if (_loggedIn) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.verified_user_rounded, color: Colors.green),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('Logged in successfully. Huawei management features are available.')),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
                 _buildWanCard(),
                 const SizedBox(height: 16),
                 _buildFeatureSection(),
