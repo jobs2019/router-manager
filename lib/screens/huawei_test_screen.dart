@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
@@ -17,7 +19,10 @@ class HuaweiTestScreen extends StatefulWidget {
 }
 
 class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
+  static const _idleTimeout = Duration(minutes: 15);
+
   late final HuaweiApi _api;
+  Timer? _idleTimer;
 
   final TextEditingController _usernameController = TextEditingController(text: 'telecomadmin');
   final TextEditingController _passwordController = TextEditingController(text: 'admintelecom');
@@ -37,9 +42,49 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
   @override
   void dispose() {
+    _idleTimer?.cancel();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _startIdleTimer() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleTimeout, _handleIdleTimeout);
+  }
+
+  void _recordActivity() {
+    if (_loggedIn) _startIdleTimer();
+  }
+
+  Future<void> _handleIdleTimeout() async {
+    if (!_loggedIn) return;
+    await _logoutHuawei(automatic: true);
+  }
+
+  Future<void> _logoutHuawei({bool automatic = false}) async {
+    _idleTimer?.cancel();
+    _idleTimer = null;
+
+    try {
+      await _api.logout();
+    } catch (_) {
+      // Huawei logout is best-effort; the API also clears the local session.
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _loggedIn = false;
+      _loadingWan = false;
+      _wanData = null;
+      _error = null;
+    });
+
+    if (automatic) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Huawei session ended after 15 minutes of inactivity.')),
+      );
+    }
   }
 
   Future<void> _loginHuawei() async {
@@ -57,6 +102,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       );
       if (!mounted) return;
       setState(() => _loggedIn = true);
+      _startIdleTimer();
       await _loadWan();
     } catch (e) {
       if (!mounted) return;
@@ -68,6 +114,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
   Future<void> _loadWan() async {
     if (!_loggedIn) return;
+    _recordActivity();
     setState(() {
       _loadingWan = true;
       _error = null;
@@ -247,7 +294,10 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   Widget _featureTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
+      onTap: () {
+        _recordActivity();
+        onTap();
+      },
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.grey.shade200)),
@@ -311,50 +361,61 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F8),
-      appBar: AppBar(
-        title: const Text('Router Manager', style: TextStyle(fontWeight: FontWeight.w700)),
+    return Listener(
+      onPointerDown: (_) => _recordActivity(),
+      child: Scaffold(
         backgroundColor: const Color(0xFFF7F7F8),
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildRouterHeader(),
-              const SizedBox(height: 16),
-              if (!_loggedIn) _buildLoginCard(),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ],
-              if (_loggedIn) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.verified_user_rounded, color: Colors.green),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('Logged in successfully. Huawei management features are available.')),
-                    ],
-                  ),
-                ),
+        appBar: AppBar(
+          title: const Text('Router Manager', style: TextStyle(fontWeight: FontWeight.w700)),
+          backgroundColor: const Color(0xFFF7F7F8),
+          elevation: 0,
+          actions: [
+            if (_loggedIn)
+              IconButton(
+                tooltip: 'Logout',
+                onPressed: _loading ? null : () => _logoutHuawei(),
+                icon: const Icon(Icons.logout_rounded),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildRouterHeader(),
                 const SizedBox(height: 16),
-                _buildWanCard(),
-                const SizedBox(height: 18),
-                _buildFeatureSection(),
+                if (!_loggedIn) _buildLoginCard(),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+                if (_loggedIn) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.verified_user_rounded, color: Colors.green),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('Logged in successfully. Huawei management features are available.')),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildWanCard(),
+                  const SizedBox(height: 18),
+                  _buildFeatureSection(),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
