@@ -51,16 +51,27 @@ class HuaweiDeviceAccessControlService {
 
   String? _extractSid(String? cookie) {
     if (cookie == null) return null;
-    final match = RegExp(r'(?:^|\s|Cookie=)sid=([^:;\s]+)', caseSensitive: false)
-        .firstMatch(cookie);
+    final match = RegExp(
+      r'(?:^|\s|Cookie=)sid=([^:;\s]+)',
+      caseSensitive: false,
+    ).firstMatch(cookie);
     return match?.group(1);
   }
 
   String? _extractOntToken(String body) {
     final patterns = <RegExp>[
-      RegExp(r'''<input[^>]*id\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''', caseSensitive: false),
-      RegExp(r'''<input[^>]*name\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''', caseSensitive: false),
-      RegExp(r'''<input[^>]*value\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']onttoken["']''', caseSensitive: false),
+      RegExp(
+        r'''<input[^>]*id\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''<input[^>]*name\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''<input[^>]*value\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']onttoken["']''',
+        caseSensitive: false,
+      ),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
@@ -76,16 +87,22 @@ class HuaweiDeviceAccessControlService {
       caseSensitive: false,
     ).firstMatch(body);
     if (match == null) return false;
-    return RegExp(r'\bchecked\b', caseSensitive: false).hasMatch(match.group(0)!);
+    return RegExp(r'\bchecked\b', caseSensitive: false)
+        .hasMatch(match.group(0)!);
   }
 
-  Future<void> login({required String username, required String password}) async {
+  Future<void> login({
+    required String username,
+    required String password,
+  }) async {
     final randResponse = await _client.get(
       Uri.parse('$baseUrl/asp/GetRandCount.asp'),
       headers: _headers(),
     );
     if (randResponse.statusCode != 200) {
-      throw Exception('Unable to connect to Huawei router (HTTP ${randResponse.statusCode}).');
+      throw Exception(
+        'Unable to connect to Huawei router (HTTP ${randResponse.statusCode}).',
+      );
     }
 
     _loginToken = randResponse.body.replaceFirst('\uFEFF', '').trim();
@@ -97,7 +114,10 @@ class HuaweiDeviceAccessControlService {
     final encodedPassword = base64Encode(utf8.encode(password));
     final response = await _client.post(
       Uri.parse('$baseUrl/login.cgi'),
-      headers: _headers(referer: '$baseUrl/login.asp', form: true),
+      headers: _headers(
+        referer: '$baseUrl/login.asp',
+        form: true,
+      ),
       body: {
         'UserName': username,
         'PassWord': encodedPassword,
@@ -117,13 +137,17 @@ class HuaweiDeviceAccessControlService {
     final accepted = response.body.contains("top.location.replace('/')") ||
         !response.body.toLowerCase().contains('login');
     if (!accepted || _sid == null || _sid!.isEmpty) {
-      throw Exception('Huawei login was not accepted or no SID was established.');
+      throw Exception(
+        'Huawei login was not accepted or no SID was established.',
+      );
     }
   }
 
   Future<HuaweiDeviceAccessControlStatus> getStatus() async {
     if (_cookie == null || _sid == null) {
-      throw Exception('Huawei session is not available. Please log in again.');
+      throw Exception(
+        'Huawei session is not available. Please log in again.',
+      );
     }
 
     final response = await _client.get(
@@ -131,12 +155,16 @@ class HuaweiDeviceAccessControlService {
       headers: _headers(referer: '$baseUrl/index.asp'),
     );
     if (response.statusCode != 200) {
-      throw Exception('Device Access Control page returned HTTP ${response.statusCode}.');
+      throw Exception(
+        'Device Access Control page returned HTTP ${response.statusCode}.',
+      );
     }
 
     final token = _extractOntToken(response.body);
     if (token == null) {
-      throw Exception('Device Access Control page did not provide onttoken.');
+      throw Exception(
+        'Device Access Control page did not provide onttoken.',
+      );
     }
 
     return HuaweiDeviceAccessControlStatus(
@@ -149,24 +177,30 @@ class HuaweiDeviceAccessControlService {
 
   Future<HuaweiDeviceAccessControlStatus> setEnabled(bool enabled) async {
     if (_cookie == null || _sid == null) {
-      throw Exception('Huawei session is not available. Please log in again.');
+      throw Exception(
+        'Huawei session is not available. Please log in again.',
+      );
     }
 
-    // The EG8145V5 page's EnablePortAclForm() sends
-    // x.AccessControlListEnable=1 only when enabling. When disabling it
-    // submits the token without that field. Mirror the confirmed browser
-    // behavior instead of inventing a separate disable value.
+    // Confirmed EG8145V5 behavior from the browser:
+    // ON  -> x.AccessControlListEnable=1 + x.X_HW_Token
+    // OFF -> x.X_HW_Token only
     final pageResponse = await _client.get(
       Uri.parse('$baseUrl/html/bbsp/portacl/newacl.asp'),
       headers: _headers(referer: '$baseUrl/index.asp'),
     );
     if (pageResponse.statusCode != 200) {
-      throw Exception('Unable to refresh Device Access Control page (HTTP ${pageResponse.statusCode}).');
+      throw Exception(
+        'Unable to refresh Device Access Control page '
+        '(HTTP ${pageResponse.statusCode}).',
+      );
     }
 
     final token = _extractOntToken(pageResponse.body);
     if (token == null) {
-      throw Exception('Device Access Control page did not provide a fresh onttoken.');
+      throw Exception(
+        'Device Access Control page did not provide a fresh onttoken.',
+      );
     }
 
     final uri = Uri.parse(
@@ -190,10 +224,26 @@ class HuaweiDeviceAccessControlService {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Device Access Control update failed (HTTP ${response.statusCode}).');
+      throw Exception(
+        'Huawei rejected the Device Access Control request '
+        '(HTTP ${response.statusCode}).',
+      );
     }
 
-    return getStatus();
+    // HTTP 200 alone is NOT treated as success. Huawei's browser performs
+    // follow-up requests and the page state is authoritative.
+    final actual = await getStatus();
+
+    if (actual.enabled != enabled) {
+      throw Exception(
+        'Router verification failed: requested '
+        '${enabled ? 'ON' : 'OFF'}, but Huawei reports '
+        '${actual.enabled ? 'ON' : 'OFF'}. '
+        'The router did not apply the requested state.',
+      );
+    }
+
+    return actual;
   }
 
   void close() => _client.close();
