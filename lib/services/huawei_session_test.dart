@@ -160,7 +160,7 @@ class HuaweiSessionTest {
       final loginBody = loginResponse.body;
       final loginSuccess = loginResponse.statusCode == 200 &&
           (loginBody.contains("top.location.replace('/')") ||
-              !loginBody.toLowerCase().contains('login failed'));
+              !loginBody.toLowerCase().contains('login'));
 
       if (!loginSuccess || cookie == null) {
         return HuaweiSessionTestResult(
