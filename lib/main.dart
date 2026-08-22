@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/huawei_test_screen.dart';
+import 'screens/discovery_screen.dart';
 
 void main() {
   runApp(const RouterManagerApp());
@@ -16,9 +16,7 @@ class RouterManagerApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const HuaweiTestScreen(
-        routerIp: '192.168.100.1',
-      ),
+      home: const DiscoveryScreen(),
     );
   }
 }
