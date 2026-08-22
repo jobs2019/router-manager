@@ -44,10 +44,9 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
-      // First use the existing API parser. If the firmware page does not
-      // expose WlanWifiArr in the expected form, fall back to the actual
-      // y.SSID field on WlanBasic.asp?2G. This does not change the write
-      // request that is already proven to work.
+      // Keep the existing parser first. If it cannot find WlanWifiArr,
+      // read the current SSID directly from the y.SSID field on the same
+      // WlanBasic.asp?2G page. The proven write request is untouched.
       try {
         final settings = await widget.api.get2GWifiSettings();
         if (!mounted) return;
@@ -69,21 +68,25 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   }
 
   String? _extractCurrentSsid(String body) {
-    // WlanBasic.asp?2G contains the current SSID in the y.SSID input.
-    // Support either attribute order used by different EG8145V5 firmware builds.
-    final patterns = <RegExp>[
-      RegExp(r'<input[^>]+name=["\']y\.SSID["\'][^>]+value=["\']([^"\']*)["\']', caseSensitive: false),
-      RegExp(r'<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']y\.SSID["\']', caseSensitive: false),
-    ];
+    final nameMarker = 'name="y.SSID"';
+    final nameIndex = body.indexOf(nameMarker);
+    if (nameIndex < 0) return null;
 
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(body);
-      final value = match?.group(1)?.trim();
-      if (value != null && value.isNotEmpty) {
-        return _decodeHtml(value);
-      }
-    }
-    return null;
+    final inputStart = body.lastIndexOf('<input', nameIndex);
+    final inputEnd = body.indexOf('>', nameIndex);
+    if (inputStart < 0 || inputEnd < 0 || inputEnd <= inputStart) return null;
+
+    final input = body.substring(inputStart, inputEnd + 1);
+    final valueMarker = 'value="';
+    final valueIndex = input.indexOf(valueMarker);
+    if (valueIndex < 0) return null;
+
+    final valueStart = valueIndex + valueMarker.length;
+    final valueEnd = input.indexOf('"', valueStart);
+    if (valueEnd < 0) return null;
+
+    final value = input.substring(valueStart, valueEnd).trim();
+    return value.isEmpty ? null : _decodeHtml(value);
   }
 
   String _decodeHtml(String value) {
