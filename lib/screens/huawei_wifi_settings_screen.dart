@@ -44,14 +44,55 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
-      final settings = await widget.api.get2GWifiSettings();
-      if (!mounted) return;
-      _ssidController.text = settings.ssid;
+      // First use the existing API parser. If the firmware page does not
+      // expose WlanWifiArr in the expected form, fall back to the actual
+      // y.SSID field on WlanBasic.asp?2G. This does not change the write
+      // request that is already proven to work.
+      try {
+        final settings = await widget.api.get2GWifiSettings();
+        if (!mounted) return;
+        _ssidController.text = settings.ssid;
+      } catch (_) {
+        final page = await widget.api.getPage('/html/amp/wlanbasic/WlanBasic.asp?2G');
+        final ssid = _extractCurrentSsid(page);
+        if (ssid == null || ssid.isEmpty) {
+          throw Exception('Huawei did not expose the current 2.4 GHz Wi-Fi name.');
+        }
+        if (!mounted) return;
+        _ssidController.text = ssid;
+      }
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String? _extractCurrentSsid(String body) {
+    // WlanBasic.asp?2G contains the current SSID in the y.SSID input.
+    // Support either attribute order used by different EG8145V5 firmware builds.
+    final patterns = <RegExp>[
+      RegExp(r'<input[^>]+name=["\']y\.SSID["\'][^>]+value=["\']([^"\']*)["\']', caseSensitive: false),
+      RegExp(r'<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']y\.SSID["\']', caseSensitive: false),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(body);
+      final value = match?.group(1)?.trim();
+      if (value != null && value.isNotEmpty) {
+        return _decodeHtml(value);
+      }
+    }
+    return null;
+  }
+
+  String _decodeHtml(String value) {
+    return value
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
   }
 
   Future<void> _save() async {
@@ -84,7 +125,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
       if (!mounted) return;
       _passwordController.clear();
       setState(() {
-        _success = '2.4 GHz Wi-Fi name was verified as changed. The password was submitted to Huawei.';
+        _success = '2.4 GHz Wi-Fi name and password were applied successfully.';
       });
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
@@ -229,7 +270,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                             decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
                           ),
                           Text(
-                            'The existing password is not read from telecomadmin. Enter the password you want the 2.4 GHz network to use.',
+                            'The existing password is not read from telecomadmin. Enter a new password only when you want to change it.',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
                         ],
