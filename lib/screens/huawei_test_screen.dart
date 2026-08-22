@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
+import 'huawei_device_access_control_screen.dart';
 import 'huawei_wifi_settings_screen.dart';
 
 class HuaweiTestScreen extends StatefulWidget {
@@ -317,8 +318,16 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
         _featureTile(
           icon: Icons.devices_rounded,
           title: 'Device Access Control',
-          subtitle: 'Blocklist, allowlist and connected devices',
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Device Access Control is the next Huawei module.'))),
+          subtitle: 'Manage device access and access-control rules',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => HuaweiDeviceAccessControlScreen(
+                routerIp: widget.routerIp,
+                username: _usernameController.text.trim(),
+                password: _passwordController.text,
+              ),
+            ),
+          ),
         ),
       ],
     );
