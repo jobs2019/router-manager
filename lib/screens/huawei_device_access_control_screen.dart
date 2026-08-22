@@ -50,13 +50,17 @@ class _HuaweiDeviceAccessControlScreenState
       _loading = true;
       _error = null;
     });
+
     try {
       await _service.login(
         username: widget.username,
         password: widget.password,
       );
+
       final status = await _service.getStatus();
+
       if (!mounted) return;
+
       setState(() {
         _enabled = status.enabled;
         _sidLength = status.sidLength;
@@ -71,28 +75,32 @@ class _HuaweiDeviceAccessControlScreenState
   }
 
   Future<void> _toggle(bool value) async {
-    if (_saving) return;
+    if (_saving || _enabled == null) return;
 
+    // The Huawei browser shows this confirmation before the OFF request.
+    // Cancel simply returns without changing _enabled, so the switch remains ON.
     if (!value) {
       final confirmed = await showDialog<bool>(
         context: context,
+        barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: const Text('Disable access control?'),
+          title: Text(widget.routerIp),
           content: const Text(
-            'This will disable the Huawei Device Access Control feature. Continue?',
+            'The connection may be interrupted. Continue?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Disable'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('OK'),
             ),
           ],
         ),
       );
+
       if (confirmed != true) return;
     }
 
@@ -102,20 +110,24 @@ class _HuaweiDeviceAccessControlScreenState
     });
 
     try {
+      // Service uses the exact confirmed browser payload:
+      // ON  -> x.AccessControlListEnable=1 + x.X_HW_Token
+      // OFF -> x.X_HW_Token only
+      // It then reads newacl.asp again and verifies the actual router state.
       final status = await _service.setEnabled(value);
+
       if (!mounted) return;
+
       setState(() {
         _enabled = status.enabled;
         _sidLength = status.sidLength;
         _tokenLength = status.tokenLength;
       });
-      if (_enabled != value) {
-        setState(() {
-          _error = 'Router did not report the requested state after saving.';
-        });
-      }
     } catch (e) {
       if (!mounted) return;
+
+      // Do not force the switch to the requested value on failure.
+      // Keep showing the last confirmed router state.
       setState(() => _error = _cleanError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -193,7 +205,9 @@ class _HuaweiDeviceAccessControlScreenState
                           ),
                           Switch(
                             value: enabled ?? false,
-                            onChanged: enabled == null || _saving ? null : _toggle,
+                            onChanged: enabled == null || _saving
+                                ? null
+                                : _toggle,
                           ),
                         ],
                       ),
@@ -218,15 +232,31 @@ class _HuaweiDeviceAccessControlScreenState
                   children: [
                     const Text(
                       'Session',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 10),
-                    _row('SID', _sidLength == null ? '--' : 'obtained ($_sidLength chars)'),
-                    _row('onttoken', _tokenLength == null ? '--' : 'fresh ($_tokenLength chars)'),
+                    _row(
+                      'SID',
+                      _sidLength == null
+                          ? '--'
+                          : 'obtained ($_sidLength chars)',
+                    ),
+                    _row(
+                      'onttoken',
+                      _tokenLength == null
+                          ? '--'
+                          : 'fresh ($_tokenLength chars)',
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       'SID and token values are never shown in the app.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
                   ],
                 ),
@@ -255,9 +285,9 @@ class _HuaweiDeviceAccessControlScreenState
               child: const Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  'Next: connected-device discovery and blacklist/whitelist management. '
-                  'Those write endpoints will be added only after their exact EG8145V5 '
-                  'browser requests are confirmed.',
+                  'Access Control state is read from Huawei and verified again after every change. '
+                  'Connected-device discovery and blacklist/whitelist management will be implemented '
+                  'only after their exact EG8145V5 browser requests are confirmed.',
                 ),
               ),
             ),
