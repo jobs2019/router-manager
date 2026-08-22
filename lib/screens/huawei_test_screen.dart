@@ -69,6 +69,32 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
     setState(() => _loading = false);
   }
 
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to log out of this Huawei router?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // The HuaweiApi session is owned by this screen. Leaving the screen
+    // disposes the authenticated API instance and removes the app session.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   Future<void> _runSessionTest() async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -425,6 +451,14 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
         title: const Text('Router Manager', style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: const Color(0xFFF7F7F8),
         elevation: 0,
+        actions: [
+          if (_loggedIn)
+            IconButton(
+              tooltip: 'Logout',
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: _logout,
+            ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
