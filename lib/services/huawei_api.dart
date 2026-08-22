@@ -104,8 +104,8 @@ class HuaweiApi {
   String _inputValue(String body, String name, {String fallback = ''}) {
     final escaped = RegExp.escape(name);
     final patterns = <RegExp>[
-      RegExp('<input[^>]+name=["\']$escaped["\'][^>]+value=["\']([^"\']*)["\']', caseSensitive: false),
-      RegExp('<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']$escaped["\']', caseSensitive: false),
+      RegExp('<input[^>]+name=["\\\']$escaped["\\\'][^>]+value=["\\\']([^"\\\']*)["\\\']', caseSensitive: false),
+      RegExp('<input[^>]+value=["\\\']([^"\\\']*)["\\\'][^>]+name=["\\\']$escaped["\\\']', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
@@ -117,24 +117,43 @@ class HuaweiApi {
   bool _inputChecked(String body, String name, {bool fallback = false}) {
     final escaped = RegExp.escape(name);
     final patterns = <RegExp>[
-      RegExp('<input[^>]+name=["\']$escaped["\'][^>]*checked[^>]*>', caseSensitive: false),
-      RegExp('<input[^>]+checked[^>]*name=["\']$escaped["\'][^>]*>', caseSensitive: false),
+      RegExp('<input[^>]+name=["\\\']$escaped["\\\'][^>]*checked[^>]*>', caseSensitive: false),
+      RegExp('<input[^>]+checked[^>]*name=["\\\']$escaped["\\\'][^>]*>', caseSensitive: false),
     ];
     return patterns.any((pattern) => pattern.hasMatch(body)) || fallback;
   }
 
+  // Extract the Huawei page token without a quote-heavy regular expression.
   String _findPageToken(String body) {
-    final patterns = <RegExp>[
-      RegExp(r"name=[\"']x\.X_HW_Token[\"'][^>]+value=[\"']([^\"']+)[\"']", caseSensitive: false),
-      RegExp(r"value=[\"']([^\"']+)[\"'][^>]+name=[\"']x\.X_HW_Token[\"']", caseSensitive: false),
-      RegExp(r"x\.X_HW_Token\s*=\s*[\"']([^\"']+)[\"']", caseSensitive: false),
-      RegExp(r"X_HW_Token[\"']?\s*[,=:]\s*[\"']([^\"']+)[\"']", caseSensitive: false),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(body);
-      if (match != null && (match.group(1) ?? '').isNotEmpty) return match.group(1)!;
+    const marker = 'x.X_HW_Token';
+    var searchFrom = 0;
+    while (true) {
+      final index = body.indexOf(marker, searchFrom);
+      if (index < 0) return '';
+      final end = index + 300 < body.length ? index + 300 : body.length;
+      final section = body.substring(index, end);
+      final valueStart = section.indexOf('value=');
+      if (valueStart >= 0) {
+        var i = valueStart + 6;
+        while (i < section.length && (section[i] == ' ' || section[i] == '\t')) i++;
+        if (i < section.length && (section[i] == '"' || section[i] == "'")) {
+          final quote = section[i++];
+          final close = section.indexOf(quote, i);
+          if (close > i) return section.substring(i, close);
+        }
+      }
+      final equals = section.indexOf('=', marker.length);
+      if (equals >= 0) {
+        var i = equals + 1;
+        while (i < section.length && (section[i] == ' ' || section[i] == '\t')) i++;
+        if (i < section.length && (section[i] == '"' || section[i] == "'")) {
+          final quote = section[i++];
+          final close = section.indexOf(quote, i);
+          if (close > i) return section.substring(i, close);
+        }
+      }
+      searchFrom = index + marker.length;
     }
-    return '';
   }
 
   Future<HuaweiWifiSettings> get2GWifiSettings() async {
