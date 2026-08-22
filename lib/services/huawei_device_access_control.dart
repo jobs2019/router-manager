@@ -225,7 +225,7 @@ class HuaweiDeviceAccessControlService {
     }
   }
 
-  Future<HuaweiDeviceAccessControlStatus> getStatus() async {
+  Future<String> _getAccessControlPage() async {
     if (_cookie == null || _sid == null) {
       throw Exception(
         'Huawei session is not available. Please log in again.',
@@ -242,7 +242,13 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    final token = _extractOntToken(response.body);
+    return response.body;
+  }
+
+  Future<HuaweiDeviceAccessControlStatus> getStatus() async {
+    final body = await _getAccessControlPage();
+
+    final token = _extractOntToken(body);
     if (token == null) {
       throw Exception(
         'Device Access Control page did not provide onttoken.',
@@ -250,10 +256,31 @@ class HuaweiDeviceAccessControlService {
     }
 
     return _statusFromPage(
-      body: response.body,
-      httpStatus: response.statusCode,
+      body: body,
+      httpStatus: 200,
       token: token,
     );
+  }
+
+  /// Returns the Access Control List indexes that Huawei exposes in the
+  /// current newacl.asp response.
+  ///
+  /// This deliberately looks for the actual AccessControl.List.N object path
+  /// rather than guessing a fixed maximum index.
+  Future<List<int>> getEntryIndices() async {
+    final body = await _getAccessControlPage();
+    final matches = RegExp(
+      r'InternetGatewayDevice\.X_HW_Security\.AclServices\.AccessControl\.List\.(\d+)',
+    ).allMatches(body);
+
+    final indices = <int>{};
+    for (final match in matches) {
+      final value = int.tryParse(match.group(1)!);
+      if (value != null && value > 0) indices.add(value);
+    }
+
+    final result = indices.toList()..sort();
+    return result;
   }
 
   Future<HuaweiDeviceAccessControlStatus> setEnabled(bool enabled) async {
@@ -322,8 +349,6 @@ class HuaweiDeviceAccessControlService {
     return actual;
   }
 
-  /// Reproduces the additional request observed immediately around Huawei's
-  /// Apply confirmation on the New Access Control page.
   Future<void> prepareAddEntry() async {
     if (_cookie == null || _sid == null) {
       throw Exception('Huawei session is not available. Please log in again.');
@@ -344,18 +369,6 @@ class HuaweiDeviceAccessControlService {
     }
   }
 
-  /// Confirmed EG8145V5 browser request after the Apply confirmation.
-  ///
-  /// The browser sends exactly these fields:
-  /// x.Priority
-  /// x.SrcPortName
-  /// x.ServicePort
-  /// x.SrcPortType
-  /// x.SrcIp
-  /// x.Mode
-  /// x.ServiceProto
-  /// x.ServiceProtoPort
-  /// x.X_HW_Token
   Future<void> addEntry(HuaweiAccessControlRule rule) async {
     if (_cookie == null || _sid == null) {
       throw Exception('Huawei session is not available. Please log in again.');
@@ -413,6 +426,123 @@ class HuaweiDeviceAccessControlService {
         '(HTTP ${response.statusCode}).',
       );
     }
+  }
+
+  Future<void> prepareDeleteEntry() async {
+    if (_cookie == null || _sid == null) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+
+    final response = await _client.get(
+      Uri.parse('$baseUrl/html/ssmp/common/StartFileLoad.asp'),
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/add.cgi'
+            '?x=InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List'
+            '&RequestFile=html/bbsp/portacl/newacl.asp',
+      ),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Huawei StartFileLoad request before delete failed '
+        '(HTTP ${response.statusCode}).',
+      );
+    }
+  }
+
+  /// Deletes one confirmed Huawei Access Control List entry.
+  ///
+  /// The browser capture supplied during development showed:
+  ///
+  /// POST /html/bbsp/portacl/del.cgi
+  /// ?x=InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List
+  /// &RequestFile=html/bbsp/portacl/newacl.asp
+  ///
+  /// Form fields:
+  /// InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List.N=
+  /// x.X_HW_Token=<fresh token>
+  Future<void> deleteEntry(int index) async {
+    if (_cookie == null || _sid == null) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+    if (index <= 0) {
+      throw Exception('Invalid Access Control entry index: $index.');
+    }
+
+    final pageResponse = await _client.get(
+      Uri.parse('$baseUrl/html/bbsp/portacl/newacl.asp'),
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/newacl.asp',
+      ),
+    );
+
+    if (pageResponse.statusCode != 200) {
+      throw Exception(
+        'Unable to refresh the Access Control page before delete '
+        '(HTTP ${pageResponse.statusCode}).',
+      );
+    }
+
+    final token = _extractOntToken(pageResponse.body);
+    if (token == null) {
+      throw Exception(
+        'Access Control page did not provide a fresh onttoken for delete.',
+      );
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/html/bbsp/portacl/del.cgi'
+      '?x=InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List'
+      '&RequestFile=html/bbsp/portacl/newacl.asp',
+    );
+
+    final response = await _client.post(
+      uri,
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/add.cgi'
+            '?x=InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List'
+            '&RequestFile=html/bbsp/portacl/newacl.asp',
+        form: true,
+      ),
+      body: {
+        'InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List.$index': '',
+        'x.X_HW_Token': token,
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Huawei rejected Access Control entry deletion '
+        '(HTTP ${response.statusCode}).',
+      );
+    }
+  }
+
+  /// Deletes all entry indexes discovered from the current Huawei page.
+  ///
+  /// The list is re-read before and after the operation. We never guess a
+  /// fixed range of indexes, which avoids accidentally targeting unrelated
+  /// objects on a different firmware.
+  Future<int> deleteAllEntries() async {
+    var indices = await getEntryIndices();
+    if (indices.isEmpty) return 0;
+
+    var deleted = 0;
+    for (final index in indices) {
+      await prepareDeleteEntry();
+      await deleteEntry(index);
+      deleted++;
+    }
+
+    final remaining = await getEntryIndices();
+    if (remaining.isNotEmpty) {
+      throw Exception(
+        'Huawei still reports ${remaining.length} Access Control '
+        'entry/entries after deletion: ${remaining.join(', ')}.',
+      );
+    }
+
+    return deleted;
   }
 
   void close() => _client.close();
