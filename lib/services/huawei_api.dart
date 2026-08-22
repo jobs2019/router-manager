@@ -53,6 +53,51 @@ class HuaweiApi {
     throw Exception('Huawei login was not accepted. Please check the username and password.');
   }
 
+  Future<void> logout() async {
+    if (_cookie == null || _cookie!.isEmpty) {
+      throw Exception('Huawei session is not available.');
+    }
+
+    final pageResponse = await http.get(
+      Uri.parse('$baseUrl/html/bbsp/portacl/newacl.asp'),
+      headers: {
+        ..._headers(),
+        'Referer': '$baseUrl/index.asp',
+      },
+    );
+
+    if (pageResponse.statusCode != 200) {
+      throw Exception('Unable to obtain the current Huawei session token before logout (HTTP ${pageResponse.statusCode}).');
+    }
+
+    final token = _getOntToken(pageResponse.body);
+    final uri = Uri.parse('$baseUrl/logout.cgi').replace(
+      queryParameters: {'RequestFile': 'html/logout.html'},
+    );
+
+    final response = await http.post(
+      uri,
+      headers: {
+        ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        'Cache-Control': 'max-age=0',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': baseUrl,
+        'Referer': '$baseUrl/index.asp',
+        'Upgrade-Insecure-Requests': '1',
+      },
+      body: {'x.X_HW_Token': token},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Huawei logout failed (HTTP ${response.statusCode}).');
+    }
+
+    _token = null;
+    _cookie = null;
+  }
+
   Future<String> getPage(String path) async {
     final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers());
     if (response.statusCode != 200) throw Exception('Huawei router returned HTTP ${response.statusCode}.');
