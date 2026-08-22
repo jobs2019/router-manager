@@ -221,8 +221,8 @@ class HuaweiApi {
 
     for (final match in calls) {
       final values = _quotedArguments(match.group(1) ?? '');
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
+      if (values.length >= 4 && values[1].trim() == 'ath0') {
+       final ssid = values[3].trim();
         if (ssid.isNotEmpty) return ssid;
       }
     }
@@ -233,8 +233,8 @@ class HuaweiApi {
       final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
       if (call == null) break;
       final values = _quotedArguments(call);
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
+      if (values.length >= 4 && values[1].trim() == 'ath0') {
+       final ssid = values[3].trim();
         if (ssid.isNotEmpty) return ssid;
       }
       final next = body.indexOf('new stWlanWifi(', searchFrom);
