@@ -67,7 +67,6 @@ class _HuaweiDeviceAccessControlScreenState extends State<HuaweiDeviceAccessCont
       throw Exception('Huawei did not return a login token.');
     }
 
-    final encodedPassword = Uri.encodeQueryComponent(widget.password);
     final loginBody = 'UserName=${Uri.encodeQueryComponent(widget.username)}&PassWord=${Uri.encodeQueryComponent(_base64(widget.password))}&Language=english&x.X_HW_Token=${Uri.encodeQueryComponent(_token!)}';
 
     final response = await http.post(
