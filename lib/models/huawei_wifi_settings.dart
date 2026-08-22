@@ -1,6 +1,7 @@
 class HuaweiWifiSettings {
   final bool enabled;
   final String ssid;
+  final String currentPassword;
   final bool broadcastSsid;
   final bool wmmEnabled;
   final int maxAssociateNum;
@@ -12,6 +13,7 @@ class HuaweiWifiSettings {
   const HuaweiWifiSettings({
     required this.enabled,
     required this.ssid,
+    required this.currentPassword,
     required this.broadcastSsid,
     required this.wmmEnabled,
     required this.maxAssociateNum,
@@ -24,6 +26,7 @@ class HuaweiWifiSettings {
   HuaweiWifiSettings copyWith({
     bool? enabled,
     String? ssid,
+    String? currentPassword,
     bool? broadcastSsid,
     bool? wmmEnabled,
     int? maxAssociateNum,
@@ -35,6 +38,7 @@ class HuaweiWifiSettings {
     return HuaweiWifiSettings(
       enabled: enabled ?? this.enabled,
       ssid: ssid ?? this.ssid,
+      currentPassword: currentPassword ?? this.currentPassword,
       broadcastSsid: broadcastSsid ?? this.broadcastSsid,
       wmmEnabled: wmmEnabled ?? this.wmmEnabled,
       maxAssociateNum: maxAssociateNum ?? this.maxAssociateNum,
