@@ -460,7 +460,7 @@ class HuaweiDeviceAccessControlService {
   ///
   /// Form fields:
   /// InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List.N=
-  /// x.X_HW_Token=<fresh token>
+  /// x.X_HW_Token=`<fresh token>`
   Future<void> deleteEntry(int index) async {
     if (_cookie == null || _sid == null) {
       throw Exception('Huawei session is not available. Please log in again.');
