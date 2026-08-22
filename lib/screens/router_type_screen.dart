@@ -15,7 +15,8 @@ class RouterTypeScreen extends StatefulWidget {
 }
 
 class _RouterTypeScreenState extends State<RouterTypeScreen> {
-  RouterType _selectedType = RouterType.suncommSe06Pro;
+  // Huawei is the primary router for this app and is selected by default.
+  RouterType _selectedType = RouterType.huaweiEg8145v5;
 
   String _defaultIp(RouterType type) {
     switch (type) {
@@ -61,6 +62,15 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep Huawei first because it is currently the primary supported router.
+    const routerOrder = <RouterType>[
+      RouterType.huaweiEg8145v5,
+      RouterType.suncommSe06Pro,
+      RouterType.mikrotik,
+      RouterType.zte,
+      RouterType.other,
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Router'),
@@ -94,7 +104,7 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
                   });
                 },
                 child: ListView(
-                  children: RouterType.values.map((type) {
+                  children: routerOrder.map((type) {
                     return Card(
                       child: RadioListTile<RouterType>(
                         value: type,
