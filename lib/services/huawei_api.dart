@@ -125,10 +125,10 @@ class HuaweiApi {
 
   String _findPageToken(String body) {
     final patterns = <RegExp>[
-      RegExp(r'name=["\']x\.X_HW_Token["\'][^>]+value=["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'value=["\']([^"\']+)["\'][^>]+name=["\']x\.X_HW_Token["\']', caseSensitive: false),
-      RegExp(r'x\.X_HW_Token\s*=\s*["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'X_HW_Token["\']?\s*[,=:]\s*["\']([^"\']+)["\']', caseSensitive: false),
+      RegExp(r"name=[\"']x\.X_HW_Token[\"'][^>]+value=[\"']([^\"']+)[\"']", caseSensitive: false),
+      RegExp(r"value=[\"']([^\"']+)[\"'][^>]+name=[\"']x\.X_HW_Token[\"']", caseSensitive: false),
+      RegExp(r"x\.X_HW_Token\s*=\s*[\"']([^\"']+)[\"']", caseSensitive: false),
+      RegExp(r"X_HW_Token[\"']?\s*[,=:]\s*[\"']([^\"']+)[\"']", caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
@@ -226,8 +226,6 @@ class HuaweiApi {
     final responseBody = response.body.toLowerCase();
     if (responseBody.contains('login.asp') && responseBody.contains('username')) throw Exception('Huawei session expired. Please log in again.');
 
-    // Verify the SSID through the same WlanBasic page. telecomadmin masks
-    // the current PSK, so password verification by read-back is not possible.
     await Future<void>.delayed(const Duration(milliseconds: 700));
     final verifyPage = await _get2GBasicPage();
     final actualSsid = _inputValue(verifyPage, 'y.SSID', fallback: '');
