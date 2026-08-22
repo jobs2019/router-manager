@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/router_profile.dart';
 import '../services/se06_api.dart';
 import 'dashboard_screen.dart';
+import 'huawei_test_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final RouterProfile profile;
@@ -63,12 +64,23 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
 
         Navigator.of(context).pushReplacement(
- 	 MaterialPageRoute(
- 	   builder: (_) => DashboardScreen(
- 	     api: api,
- 	   ),
- 	 ),
-	);
+          MaterialPageRoute(
+            builder: (_) => DashboardScreen(
+              api: api,
+            ),
+          ),
+        );
+      } else if (widget.profile.routerType ==
+          RouterType.huaweiHg8145x6) {
+        if (!mounted) return;
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => HuaweiTestScreen(
+              routerIp: widget.profile.currentIp,
+            ),
+          ),
+        );
       } else {
         throw Exception(
           '${widget.profile.routerTypeName} API is not implemented yet.',
