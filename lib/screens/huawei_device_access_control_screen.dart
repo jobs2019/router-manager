@@ -30,6 +30,7 @@ class _HuaweiDeviceAccessControlScreenState
   String? _entryMessage;
   int? _sidLength;
   int? _tokenLength;
+  List<int> _entryIndices = const [];
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _HuaweiDeviceAccessControlScreenState
       );
 
       final status = await _service.getStatus();
+      final entries = await _service.getEntryIndices();
 
       if (!mounted) return;
 
@@ -66,6 +68,7 @@ class _HuaweiDeviceAccessControlScreenState
         _enabled = status.enabled;
         _sidLength = status.sidLength;
         _tokenLength = status.tokenLength;
+        _entryIndices = entries;
       });
     } catch (e) {
       if (!mounted) return;
@@ -126,19 +129,6 @@ class _HuaweiDeviceAccessControlScreenState
     }
   }
 
-  /// Huawei's current EG8145V5 page shows these values when New is opened:
-  ///
-  /// Priority       = 1
-  /// Port Type      = WAN (encoded as SrcPortType=2)
-  /// WAN name       = All (encoded as SrcPortName=ALL)
-  /// Application    = HTTP (encoded as ServicePort=HTTP)
-  /// Source IP      = blank
-  /// Mode           = Permit (encoded as Mode=0)
-  /// Protocol       = blank
-  /// Protocol Port  = blank
-  ///
-  /// The user requested that tapping New should immediately use this default
-  /// rule instead of opening a manual-entry form.
   HuaweiAccessControlRule _defaultNewRule() {
     return const HuaweiAccessControlRule(
       priority: '1',
@@ -152,11 +142,32 @@ class _HuaweiDeviceAccessControlScreenState
     );
   }
 
+  Future<bool> _confirmHuaweiOperation(String message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(widget.routerIp),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
+  }
+
   Future<void> _newEntry() async {
     if (_saving || _enabled != true) return;
 
-    // New now means "create the standard Huawei rule". No manual form is
-    // shown; the values above are sent automatically after confirmation.
     final rule = _defaultNewRule();
 
     setState(() {
@@ -166,43 +177,80 @@ class _HuaweiDeviceAccessControlScreenState
     });
 
     try {
-      // This request was observed immediately around the Huawei Apply
-      // confirmation. We reproduce it before displaying the confirmation.
       await _service.prepareAddEntry();
 
       if (!mounted) return;
 
-      final confirmed = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Text(widget.routerIp),
-          content: const Text(
-            'The connection may be interrupted. Continue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+      final confirmed = await _confirmHuaweiOperation(
+        'The connection may be interrupted. Continue?',
       );
 
       if (confirmed != true) return;
 
       await _service.addEntry(rule);
 
+      final entries = await _service.getEntryIndices();
+
       if (!mounted) return;
       setState(() {
+        _entryIndices = entries;
         _entryMessage =
             'Default rule submitted: Priority 1, WAN / All, HTTP, Permit. '
-            'The entry-list response is not parsed yet, so the app will not '
-            'claim that the rule is verified until that browser response is confirmed.';
+            'Detected ${entries.length} Access Control entr${entries.length == 1 ? 'y' : 'ies'}.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _cleanError(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deleteAllEntries() async {
+    if (_saving || _entryIndices.isEmpty) return;
+
+    final count = _entryIndices.length;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete all entries?'),
+        content: Text(
+          'This will delete all $count Access Control entr${count == 1 ? 'y' : 'ies'} '
+          'currently reported by the Huawei router. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _saving = true;
+      _error = null;
+      _entryMessage = null;
+    });
+
+    try {
+      final deleted = await _service.deleteAllEntries();
+      final remaining = await _service.getEntryIndices();
+
+      if (!mounted) return;
+      setState(() {
+        _entryIndices = remaining;
+        _entryMessage = remaining.isEmpty
+            ? 'Deleted $deleted Access Control entr${deleted == 1 ? 'y' : 'ies'}. Huawei reports the list is now empty.'
+            : 'Delete completed, but Huawei still reports ${remaining.length} entr${remaining.length == 1 ? 'y' : 'ies'}.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -218,6 +266,7 @@ class _HuaweiDeviceAccessControlScreenState
   @override
   Widget build(BuildContext context) {
     final enabled = _enabled;
+    final hasEntries = _entryIndices.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -316,14 +365,33 @@ class _HuaweiDeviceAccessControlScreenState
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'New automatically uses the standard Huawei rule: WAN / All / HTTP / Permit.',
+                    Text(
+                      hasEntries
+                          ? 'Huawei reports ${_entryIndices.length} existing entr${_entryIndices.length == 1 ? 'y' : 'ies'} (indexes: ${_entryIndices.join(', ')}).'
+                          : 'Huawei reports no existing Access Control entries.',
                     ),
                     const SizedBox(height: 14),
-                    FilledButton.icon(
-                      onPressed: enabled == true && !_saving ? _newEntry : null,
-                      icon: const Icon(Icons.add),
-                      label: const Text('New'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                enabled == true && !_saving ? _newEntry : null,
+                            icon: const Icon(Icons.add),
+                            label: const Text('New'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: hasEntries && !_saving
+                                ? _deleteAllEntries
+                                : null,
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Delete All'),
+                          ),
+                        ),
+                      ],
                     ),
                     if (_entryMessage != null) ...[
                       const SizedBox(height: 12),
@@ -406,8 +474,8 @@ class _HuaweiDeviceAccessControlScreenState
                 padding: EdgeInsets.all(16),
                 child: Text(
                   'Access Control state is read from Huawei and verified again after every ON/OFF change. '
-                  'The Add Entry request now follows the confirmed browser endpoint and field names. '
-                  'Entry-list verification will be added only after its exact browser response is confirmed.',
+                  'Existing entries can now be detected and deleted before creating the standard rule. '
+                  'The Delete request follows the confirmed EG8145V5 del.cgi endpoint and token field.',
                 ),
               ),
             ),
