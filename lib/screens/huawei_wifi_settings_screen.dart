@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/huawei_simple_wifi_settings.dart';
 import '../models/huawei_wifi_settings.dart';
 import '../services/huawei_api.dart';
-import '../services/huawei_wifi_password.dart';
 
 class HuaweiWifiSettingsScreen extends StatefulWidget {
   final HuaweiApi api;
@@ -18,10 +17,8 @@ class HuaweiWifiSettingsScreen extends StatefulWidget {
       _HuaweiWifiSettingsScreenState();
 }
 
-class _HuaweiWifiSettingsScreenState
-    extends State<HuaweiWifiSettingsScreen> {
+class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   final _ssidController = TextEditingController();
-  final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _maxDevicesController = TextEditingController();
   final _groupRekeyController = TextEditingController();
@@ -29,9 +26,6 @@ class _HuaweiWifiSettingsScreenState
   bool _loading = true;
   bool _saving = false;
   bool _enabled = true;
-  bool _broadcast = true;
-  bool _wmm = true;
-  bool _wps = false;
 
   String _authenticationMode = 'PSKAuthentication';
   String _encryptionMode = 'TKIPandAESEncryption';
@@ -48,7 +42,6 @@ class _HuaweiWifiSettingsScreenState
   @override
   void dispose() {
     _ssidController.dispose();
-    _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _maxDevicesController.dispose();
     _groupRekeyController.dispose();
@@ -65,11 +58,6 @@ class _HuaweiWifiSettingsScreenState
     try {
       final settings = await widget.api.get2GWifiSettings();
       _applySettings(settings);
-
-      final currentPassword = await widget.api.get2GCurrentPassword();
-      if (mounted) {
-        _currentPasswordController.text = currentPassword;
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -87,9 +75,6 @@ class _HuaweiWifiSettingsScreenState
 
   void _applySettings(HuaweiWifiSettings settings) {
     _enabled = settings.enabled;
-    _broadcast = settings.broadcastSsid;
-    _wmm = settings.wmmEnabled;
-    _wps = settings.wpsEnabled;
     _authenticationMode = settings.authenticationMode;
     _encryptionMode = settings.encryptionMode;
     _ssidController.text = settings.ssid;
@@ -129,13 +114,13 @@ class _HuaweiWifiSettingsScreenState
     final settings = HuaweiWifiSettings(
       enabled: _enabled,
       ssid: ssid,
-      broadcastSsid: _broadcast,
-      wmmEnabled: _wmm,
+      broadcastSsid: true,
+      wmmEnabled: true,
       maxAssociateNum: maxDevices,
       authenticationMode: _authenticationMode,
       encryptionMode: _encryptionMode,
       groupRekey: groupRekey,
-      wpsEnabled: _wps,
+      wpsEnabled: false,
     );
 
     setState(() {
@@ -145,8 +130,9 @@ class _HuaweiWifiSettingsScreenState
     });
 
     try {
-      // The captured Huawei simple Wi-Fi request is the reliable path for
-      // changing the PSK. It updates m.Key and psk1.PreSharedKey.
+      // The captured Huawei simple Wi-Fi request is the working path for
+      // changing the 2.4 GHz PSK. It updates both m.Key and
+      // psk1.PreSharedKey on the router.
       if (newPassword.isNotEmpty) {
         final simple = await widget.api.getSimpleWifiSettings();
 
@@ -166,9 +152,9 @@ class _HuaweiWifiSettingsScreenState
         );
       }
 
-      // Keep the existing advanced 2.4 GHz save path for the security
-      // settings. Do not send the password through this path because the
-      // simplewificfg request above is the captured working password path.
+      // Keep the existing advanced 2.4 GHz save path for the settings that
+      // are currently exposed in this screen. The password is intentionally
+      // omitted here; it is handled by the captured simple Wi-Fi request.
       await widget.api.update2GWifiSettings(
         settings: settings,
         password: null,
@@ -176,14 +162,12 @@ class _HuaweiWifiSettingsScreenState
 
       if (!mounted) return;
 
-      final currentPassword = await widget.api.get2GCurrentPassword();
       _newPasswordController.clear();
-      _currentPasswordController.text = currentPassword;
 
       setState(() {
         _success = newPassword.isEmpty
             ? '2.4 GHz Wi-Fi settings saved successfully.'
-            : '2.4 GHz Wi-Fi settings and password saved successfully.';
+            : '2.4 GHz Wi-Fi password changed successfully.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -382,26 +366,18 @@ class _HuaweiWifiSettingsScreenState
                           ),
                           const SizedBox(height: 4),
                           TextField(
-                            controller: _currentPasswordController,
-                            readOnly: true,
-                            obscureText: false,
-                            decoration: _decoration(
-                              'Current Wi-Fi Password',
-                              hint: 'Router did not expose the password',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
                             controller: _newPasswordController,
-                            obscureText: true,
+                            obscureText: false,
                             maxLength: 63,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             decoration: _decoration(
                               'New Wi-Fi Password',
                               hint: 'Leave blank to keep current password',
                             ),
                           ),
                           Text(
-                            'The current password is read-only. Enter a new password only when you want to change it.',
+                            'The router does not expose the existing password to telecomadmin. Enter a new password only when you want to change it.',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
                         ],
