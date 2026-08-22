@@ -28,8 +28,6 @@ class _HuaweiDeviceAccessControlScreenState
   bool? _enabled;
   String? _error;
   String? _entryMessage;
-  int? _sidLength;
-  int? _tokenLength;
   List<int> _entryIndices = const [];
 
   @override
@@ -66,8 +64,6 @@ class _HuaweiDeviceAccessControlScreenState
 
       setState(() {
         _enabled = status.enabled;
-        _sidLength = status.sidLength;
-        _tokenLength = status.tokenLength;
         _entryIndices = entries;
       });
     } catch (e) {
@@ -109,6 +105,7 @@ class _HuaweiDeviceAccessControlScreenState
     setState(() {
       _saving = true;
       _error = null;
+      _entryMessage = null;
     });
 
     try {
@@ -116,11 +113,7 @@ class _HuaweiDeviceAccessControlScreenState
 
       if (!mounted) return;
 
-      setState(() {
-        _enabled = status.enabled;
-        _sidLength = status.sidLength;
-        _tokenLength = status.tokenLength;
-      });
+      setState(() => _enabled = status.enabled);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = _cleanError(e));
@@ -168,6 +161,13 @@ class _HuaweiDeviceAccessControlScreenState
   Future<void> _newEntry() async {
     if (_saving || _enabled != true) return;
 
+    if (_entryIndices.isNotEmpty) {
+      _showMessage(
+        'Delete the existing Access Control entry first, then create the new rule.',
+      );
+      return;
+    }
+
     final rule = _defaultNewRule();
 
     setState(() {
@@ -194,9 +194,9 @@ class _HuaweiDeviceAccessControlScreenState
       if (!mounted) return;
       setState(() {
         _entryIndices = entries;
-        _entryMessage =
-            'Default rule submitted: Priority 1, WAN / All, HTTP, Permit. '
-            'Detected ${entries.length} Access Control entr${entries.length == 1 ? 'y' : 'ies'}.';
+        _entryMessage = entries.isEmpty
+            ? 'Huawei did not report the new rule after saving.'
+            : 'Default rule created successfully.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -249,7 +249,7 @@ class _HuaweiDeviceAccessControlScreenState
       setState(() {
         _entryIndices = remaining;
         _entryMessage = remaining.isEmpty
-            ? 'Deleted $deleted Access Control entr${deleted == 1 ? 'y' : 'ies'}. Huawei reports the list is now empty.'
+            ? 'Deleted $deleted Access Control entr${deleted == 1 ? 'y' : 'ies'}. The router list is now empty.'
             : 'Delete completed, but Huawei still reports ${remaining.length} entr${remaining.length == 1 ? 'y' : 'ies'}.';
       });
     } catch (e) {
@@ -258,6 +258,12 @@ class _HuaweiDeviceAccessControlScreenState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _cleanError(Object error) =>
@@ -269,213 +275,273 @@ class _HuaweiDeviceAccessControlScreenState
     final hasEntries = _entryIndices.isNotEmpty;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F7FA),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F7FA),
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: const Text(
           'Device Access Control',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      backgroundColor: const Color(0xFFF7F7F8),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Huawei EG8145V5',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.routerIp,
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 18),
-                    if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Enable access control',
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Uses the confirmed EG8145V5 AccessControl endpoint.',
-                                ),
-                              ],
-                            ),
-                          ),
-                          Switch(
-                            value: enabled ?? false,
-                            onChanged: enabled == null || _saving
-                                ? null
-                                : _toggle,
-                          ),
-                        ],
-                      ),
-                    if (_saving) ...[
-                      const SizedBox(height: 12),
-                      const LinearProgressIndicator(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Access Control Entries',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      hasEntries
-                          ? 'Huawei reports ${_entryIndices.length} existing entr${_entryIndices.length == 1 ? 'y' : 'ies'} (indexes: ${_entryIndices.join(', ')}).'
-                          : 'Huawei reports no existing Access Control entries.',
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed:
-                                enabled == true && !_saving ? _newEntry : null,
-                            icon: const Icon(Icons.add),
-                            label: const Text('New'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: hasEntries && !_saving
-                                ? _deleteAllEntries
-                                : null,
-                            icon: const Icon(Icons.delete_outline),
-                            label: const Text('Delete All'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_entryMessage != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _entryMessage!,
-                        style: TextStyle(
-                          color: Colors.green.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Session',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    _row(
-                      'SID',
-                      _sidLength == null
-                          ? '--'
-                          : 'obtained ($_sidLength chars)',
-                    ),
-                    _row(
-                      'onttoken',
-                      _tokenLength == null
-                          ? '--'
-                          : 'fresh ($_tokenLength chars)',
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'SID and token values are never shown in the app.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildRouterCard(enabled),
+            const SizedBox(height: 14),
+            _buildRulesCard(enabled, hasEntries),
+            if (_entryMessage != null) ...[
+              const SizedBox(height: 12),
+              _buildMessageCard(_entryMessage!, isError: false),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Card(
-                elevation: 0,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+              _buildMessageCard(_error!, isError: true),
+            ],
+            const SizedBox(height: 14),
+            _buildInfoCard(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRouterCard(bool? enabled) {
+    final isEnabled = enabled == true;
+
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFF4EFFA),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const Icon(Icons.router_rounded, size: 27),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Huawei EG8145V5',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        widget.routerIp,
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_loading)
+                  _statusBadge(
+                    label: isEnabled ? 'ON' : 'OFF',
+                    active: isEnabled,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: LinearProgressIndicator(),
+              )
+            else
+              Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Enable access control',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text('Controls the Huawei Access Control service.'),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: enabled ?? false,
+                    onChanged: enabled == null || _saving ? null : _toggle,
+                  ),
+                ],
+              ),
+            if (_saving) ...[
+              const SizedBox(height: 10),
+              const LinearProgressIndicator(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRulesCard(bool? enabled, bool hasEntries) {
+    final canCreate = enabled == true && !hasEntries && !_saving;
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
                   child: Text(
-                    _error!,
+                    'Access Control Rule',
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
+                _statusBadge(
+                  label: hasEntries ? '1 RULE' : 'EMPTY',
+                  active: hasEntries,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasEntries
+                  ? 'Huawei reports ${_entryIndices.length} existing rule${_entryIndices.length == 1 ? '' : 's'}.'
+                  : 'No Access Control rule is currently configured.',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            if (hasEntries) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F5F9),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.rule_rounded, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Huawei rule index: ${_entryIndices.join(', ')}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-            const SizedBox(height: 18),
-            Card(
-              elevation: 0,
-              color: Colors.blue.withValues(alpha: 0.06),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Access Control state is read from Huawei and verified again after every ON/OFF change. '
-                  'Existing entries can now be detected and deleted before creating the standard rule. '
-                  'The Delete request follows the confirmed EG8145V5 del.cgi endpoint and token field.',
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: canCreate ? _newEntry : null,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('New'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: hasEntries && !_saving
+                        ? _deleteAllEntries
+                        : null,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Delete All'),
+                  ),
+                ),
+              ],
+            ),
+            if (hasEntries && enabled != true) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Access Control is OFF, but the router still has a saved rule. Delete it here before creating a new rule.',
+                style: TextStyle(
+                  color: Colors.orange.shade800,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else if (hasEntries) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Delete the existing rule before creating another one.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                ),
+              ),
+            ] else if (enabled != true && !_loading) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Turn Access Control ON before creating the default rule.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageCard(String message, {required bool isError}) {
+    final textColor = isError ? Colors.red.shade700 : Colors.green.shade800;
+    final background = isError
+        ? Colors.red.withValues(alpha: 0.06)
+        : Colors.green.withValues(alpha: 0.06);
+
+    return Card(
+      elevation: 0,
+      color: background,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: textColor,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -485,24 +551,46 @@ class _HuaweiDeviceAccessControlScreenState
     );
   }
 
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+  Widget _buildInfoCard() {
+    return Card(
+      elevation: 0,
+      color: Colors.blue.withValues(alpha: 0.055),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: const Padding(
+        padding: EdgeInsets.all(16),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 95,
-              child: Text(
-                label,
-                style: TextStyle(color: Colors.grey.shade700),
-              ),
-            ),
+            Icon(Icons.info_outline_rounded, size: 20),
+            SizedBox(width: 10),
             Expanded(
               child: Text(
-                value,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                'Changes are read back from the Huawei router after saving so the app does not report success when the router rejects the request.',
               ),
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _statusBadge({required String label, required bool active}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: active
+            ? Colors.green.withValues(alpha: 0.12)
+            : Colors.grey.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: active ? Colors.green.shade700 : Colors.grey.shade700,
+        ),
+      ),
+    );
+  }
 }
