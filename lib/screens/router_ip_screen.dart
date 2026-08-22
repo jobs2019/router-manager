@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/router_profile.dart';
 import '../services/router_discovery.dart';
+import 'huawei_test_screen.dart';
 import 'login_screen.dart';
 
 class RouterIpScreen extends StatefulWidget {
@@ -82,14 +83,27 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
       return;
     }
 
-    final type =
-        widget.routerType ?? RouterType.other;
+    final type = widget.routerType ?? RouterType.other;
+    final ip = _ipController.text.trim();
+
+    // Huawei has its own login screen, so skip the generic
+    // Administrator Login page after router IP configuration.
+    if (type == RouterType.huaweiEg8145v5) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => HuaweiTestScreen(
+            routerIp: ip,
+          ),
+        ),
+      );
+      return;
+    }
 
     final profile = RouterProfile(
       name: _routerName(type),
       routerType: type,
       defaultIp: widget.defaultIp ?? '',
-      currentIp: _ipController.text.trim(),
+      currentIp: ip,
       ipMode: _ipMode,
     );
 
@@ -106,8 +120,8 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
     switch (type) {
       case RouterType.suncommSe06Pro:
         return 'SE06 Pro';
-      case RouterType.huaweiHg8145x6:
-        return 'Huawei HG8145X6';
+      case RouterType.huaweiEg8145v5:
+        return 'Huawei EG8145V5';
       case RouterType.mikrotik:
         return 'MikroTik';
       case RouterType.zte:
@@ -148,15 +162,13 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
 
                   if (value == IpMode.automatic &&
                       widget.detectedIp != null) {
-                    _ipController.text =
-                        widget.detectedIp!;
+                    _ipController.text = widget.detectedIp!;
                   }
 
                   if (value == IpMode.staticIp &&
                       _ipController.text.isEmpty &&
                       widget.defaultIp != null) {
-                    _ipController.text =
-                        widget.defaultIp!;
+                    _ipController.text = widget.defaultIp!;
                   }
                 });
               },
@@ -199,9 +211,7 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
               const SizedBox(height: 8),
               Text(
                 'Default IP: ${widget.defaultIp}',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
 
@@ -221,9 +231,7 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
                       )
                     : const Icon(Icons.network_check),
                 label: Text(
-                  _testing
-                      ? 'Testing...'
-                      : 'Test Connection',
+                  _testing ? 'Testing...' : 'Test Connection',
                 ),
               ),
             ),
@@ -241,9 +249,7 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
                         : Colors.red,
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(_message!),
-                  ),
+                  Expanded(child: Text(_message!)),
                 ],
               ),
             ],
@@ -253,9 +259,12 @@ class _RouterIpScreenState extends State<RouterIpScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed:
-                    _reachable == true ? _continue : null,
-                child: const Text('Continue to Login'),
+                onPressed: _reachable == true ? _continue : null,
+                child: Text(
+                  widget.routerType == RouterType.huaweiEg8145v5
+                      ? 'Continue to Huawei Login'
+                      : 'Continue to Login',
+                ),
               ),
             ),
           ],
