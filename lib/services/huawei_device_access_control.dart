@@ -81,14 +81,47 @@ class HuaweiDeviceAccessControlService {
     return null;
   }
 
+  /// Reads the actual Access Control checkbox from the returned HTML.
+  ///
+  /// The previous parser assumed that the HTML would contain an input with
+  /// id="portaclwhite" and that the word "checked" would appear inside the
+  /// same tag. That is too strict for Huawei's generated HTML because the
+  /// attribute order/format can vary. We now locate the input by id OR name,
+  /// then inspect the complete tag for checked/checked="checked".
   bool _isAccessControlEnabled(String body) {
-    final match = RegExp(
-      r'''<input[^>]*id\s*=\s*["']portaclwhite["'][^>]*>''',
+    final inputTags = RegExp(
+      r'<input\b[^>]*>',
       caseSensitive: false,
-    ).firstMatch(body);
-    if (match == null) return false;
-    return RegExp(r'\bchecked\b', caseSensitive: false)
-        .hasMatch(match.group(0)!);
+    ).allMatches(body);
+
+    for (final match in inputTags) {
+      final tag = match.group(0)!;
+      final id = RegExp(
+        r'''\bid\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ).firstMatch(tag)?.group(1);
+      final name = RegExp(
+        r'''\bname\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ).firstMatch(tag)?.group(1);
+
+      final isAccessControlInput =
+          id?.toLowerCase() == 'portaclwhite' ||
+          name?.toLowerCase() == 'portaclwhite' ||
+          id?.toLowerCase() == 'accesscontrollistenable' ||
+          name?.toLowerCase() == 'accesscontrollistenable';
+
+      if (!isAccessControlInput) continue;
+
+      return RegExp(
+        r'\bchecked(?:\s*=\s*["\']?checked["\']?)?\b',
+        caseSensitive: false,
+      ).hasMatch(tag);
+    }
+
+    // Keep the old known Huawei field as a fallback, but do not invent a
+    // successful state when the router did not expose the control at all.
+    return false;
   }
 
   Future<void> login({
@@ -182,7 +215,7 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    // Confirmed EG8145V5 behavior from the browser:
+    // Confirmed EG8145V5 browser behavior:
     // ON  -> x.AccessControlListEnable=1 + x.X_HW_Token
     // OFF -> x.X_HW_Token only
     final pageResponse = await _client.get(
@@ -230,8 +263,8 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    // HTTP 200 alone is NOT treated as success. Huawei's browser performs
-    // follow-up requests and the page state is authoritative.
+    // HTTP 200 alone is NOT treated as success. The router's subsequent page
+    // state is authoritative.
     final actual = await getStatus();
 
     if (actual.enabled != enabled) {
