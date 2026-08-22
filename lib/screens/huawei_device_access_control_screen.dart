@@ -126,15 +126,38 @@ class _HuaweiDeviceAccessControlScreenState
     }
   }
 
+  /// Huawei's current EG8145V5 page shows these values when New is opened:
+  ///
+  /// Priority       = 1
+  /// Port Type      = WAN (encoded as SrcPortType=2)
+  /// WAN name       = All (encoded as SrcPortName=ALL)
+  /// Application    = HTTP (encoded as ServicePort=HTTP)
+  /// Source IP      = blank
+  /// Mode           = Permit (encoded as Mode=0)
+  /// Protocol       = blank
+  /// Protocol Port  = blank
+  ///
+  /// The user requested that tapping New should immediately use this default
+  /// rule instead of opening a manual-entry form.
+  HuaweiAccessControlRule _defaultNewRule() {
+    return const HuaweiAccessControlRule(
+      priority: '1',
+      srcPortName: 'ALL',
+      servicePort: 'HTTP',
+      srcPortType: '2',
+      srcIp: '',
+      mode: '0',
+      serviceProto: '',
+      serviceProtoPort: '',
+    );
+  }
+
   Future<void> _newEntry() async {
     if (_saving || _enabled != true) return;
 
-    final rule = await showDialog<HuaweiAccessControlRule>(
-      context: context,
-      builder: (context) => const _NewAccessControlEntryDialog(),
-    );
-
-    if (rule == null || !mounted) return;
+    // New now means "create the standard Huawei rule". No manual form is
+    // shown; the values above are sent automatically after confirmation.
+    final rule = _defaultNewRule();
 
     setState(() {
       _saving = true;
@@ -177,7 +200,7 @@ class _HuaweiDeviceAccessControlScreenState
       if (!mounted) return;
       setState(() {
         _entryMessage =
-            'Huawei accepted the Access Control add request. '
+            'Default rule submitted: Priority 1, WAN / All, HTTP, Permit. '
             'The entry-list response is not parsed yet, so the app will not '
             'claim that the rule is verified until that browser response is confirmed.';
       });
@@ -294,7 +317,7 @@ class _HuaweiDeviceAccessControlScreenState
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Add a rule using the confirmed EG8145V5 add.cgi request.',
+                      'New automatically uses the standard Huawei rule: WAN / All / HTTP / Permit.',
                     ),
                     const SizedBox(height: 14),
                     FilledButton.icon(
@@ -414,115 +437,4 @@ class _HuaweiDeviceAccessControlScreenState
           ],
         ),
       );
-}
-
-class _NewAccessControlEntryDialog extends StatefulWidget {
-  const _NewAccessControlEntryDialog();
-
-  @override
-  State<_NewAccessControlEntryDialog> createState() =>
-      _NewAccessControlEntryDialogState();
-}
-
-class _NewAccessControlEntryDialogState
-    extends State<_NewAccessControlEntryDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _priority = TextEditingController(text: '1');
-  final _srcPortName = TextEditingController(text: 'ALL');
-  final _servicePort = TextEditingController(text: 'HTTP');
-  final _srcPortType = TextEditingController(text: '2');
-  final _srcIp = TextEditingController();
-  final _mode = TextEditingController(text: '0');
-  final _serviceProto = TextEditingController();
-  final _serviceProtoPort = TextEditingController();
-
-  @override
-  void dispose() {
-    _priority.dispose();
-    _srcPortName.dispose();
-    _servicePort.dispose();
-    _srcPortType.dispose();
-    _srcIp.dispose();
-    _mode.dispose();
-    _serviceProto.dispose();
-    _serviceProtoPort.dispose();
-    super.dispose();
-  }
-
-  String _value(TextEditingController controller) => controller.text.trim();
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New Access Control Entry'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _field(_priority, 'Priority', required: true),
-                _field(_srcPortName, 'Source Port Name', required: true),
-                _field(_servicePort, 'Service Port', required: true),
-                _field(_srcPortType, 'Source Port Type', required: true),
-                _field(_srcIp, 'Source IP'),
-                _field(_mode, 'Mode', required: true),
-                _field(_serviceProto, 'Service Protocol'),
-                _field(_serviceProtoPort, 'Service Protocol Port'),
-              ],
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-            Navigator.of(context).pop(
-              HuaweiAccessControlRule(
-                priority: _value(_priority),
-                srcPortName: _value(_srcPortName),
-                servicePort: _value(_servicePort),
-                srcPortType: _value(_srcPortType),
-                srcIp: _value(_srcIp),
-                mode: _value(_mode),
-                serviceProto: _value(_serviceProto),
-                serviceProtoPort: _value(_serviceProtoPort),
-              ),
-            );
-          },
-          child: const Text('Apply'),
-        ),
-      ],
-    );
-  }
-
-  Widget _field(
-    TextEditingController controller,
-    String label, {
-    bool required = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextFormField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          isDense: true,
-        ),
-        validator: required
-            ? (value) => value == null || value.trim().isEmpty
-                ? 'Required'
-                : null
-            : null,
-      ),
-    );
-  }
 }
