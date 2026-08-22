@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/huawei_wifi_settings.dart';
 import '../services/huawei_api.dart';
 
 class HuaweiWifiSettingsScreen extends StatefulWidget {
@@ -45,7 +44,6 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
-      // Deliberately use only WlanBasic.asp?2G for this test.
       final settings = await widget.api.get2GWifiSettings();
       if (!mounted) return;
       _ssidController.text = settings.ssid;
@@ -86,7 +84,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
       if (!mounted) return;
       _passwordController.clear();
       setState(() {
-        _success = '2.4 GHz Wi-Fi name and password were sent to Huawei.';
+        _success = '2.4 GHz Wi-Fi name was verified as changed. The password was submitted to Huawei.';
       });
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
