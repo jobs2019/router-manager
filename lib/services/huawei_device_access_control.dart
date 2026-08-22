@@ -545,5 +545,44 @@ class HuaweiDeviceAccessControlService {
     return deleted;
   }
 
+  Future<void> logout() async {
+    if (_cookie == null || _cookie!.isEmpty || _sid == null || _sid!.isEmpty) {
+      throw Exception('Huawei Access Control session is not available.');
+    }
+
+    final page = await _getAccessControlPage();
+    final token = _extractOntToken(page);
+    if (token == null || token.isEmpty) {
+      throw Exception('Huawei Access Control page did not provide a fresh token for logout.');
+    }
+
+    final uri = Uri.parse('$baseUrl/logout.cgi').replace(
+      queryParameters: {'RequestFile': 'html/logout.html'},
+    );
+
+    final response = await _client.post(
+      uri,
+      headers: {
+        ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        'Cache-Control': 'max-age=0',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': baseUrl,
+        'Referer': '$baseUrl/index.asp',
+        'Upgrade-Insecure-Requests': '1',
+      },
+      body: {'x.X_HW_Token': token},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Huawei Access Control logout failed (HTTP ${response.statusCode}).');
+    }
+
+    _cookie = null;
+    _loginToken = null;
+    _sid = null;
+  }
+
   void close() => _client.close();
 }
