@@ -20,7 +20,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
   final TextEditingController _usernameController =
       TextEditingController(text: 'telecomadmin');
-
   final TextEditingController _passwordController =
       TextEditingController(text: 'admintelecom');
 
@@ -29,30 +28,20 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   bool _loadingWan = false;
 
   String? _error;
-  String? _successMessage;
-
   List<Map<String, String>>? _wanData;
 
   @override
   void initState() {
     super.initState();
-
-    _api = HuaweiApi(
-      baseUrl: 'http://${widget.routerIp}',
-    );
+    _api = HuaweiApi(baseUrl: 'http://${widget.routerIp}');
   }
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
-
     super.dispose();
   }
-
-  // ============================================================
-  // LOGIN
-  // ============================================================
 
   Future<void> _loginHuawei() async {
     FocusScope.of(context).unfocus();
@@ -60,7 +49,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _successMessage = null;
       _loggedIn = false;
       _wanData = null;
     });
@@ -80,27 +68,19 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       await _loadWan();
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         _error = _cleanError(e);
       });
     }
 
     if (!mounted) return;
-
     setState(() {
       _loading = false;
     });
   }
 
-  // ============================================================
-  // WAN INFORMATION
-  // ============================================================
-
   Future<void> _loadWan() async {
-    if (!_loggedIn) {
-      return;
-    }
+    if (!_loggedIn) return;
 
     setState(() {
       _loadingWan = true;
@@ -111,47 +91,55 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       final data = await _api.getWanStatus();
 
       if (!mounted) return;
-
       setState(() {
         _wanData = data;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         _error = _cleanError(e);
       });
     }
 
     if (!mounted) return;
-
     setState(() {
       _loadingWan = false;
     });
   }
 
-  // ============================================================
-  // HELPERS
-  // ============================================================
-
   String _cleanError(Object error) {
-    return error
-        .toString()
-        .replaceFirst('Exception: ', '');
+    return error.toString().replaceFirst('Exception: ', '');
   }
 
-  // ============================================================
-  // WAN CARD
-  // ============================================================
+  Widget _infoRow(String label, String? value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value == null || value.isEmpty ? '--' : value,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildWanCard() {
     if (_loadingWan) {
       return const Card(
         child: Padding(
           padding: EdgeInsets.all(20),
-          child: Center(
-            child: CircularProgressIndicator(),
-          ),
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
     }
@@ -173,40 +161,30 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 16),
+            ..._wanData!.asMap().entries.map((entry) {
+              final index = entry.key;
+              final wan = entry.value;
 
-            ..._wanData!.asMap().entries.map(
-              (entry) {
-                final index = entry.key;
-                final wan = entry.value;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (index > 0)
-                      const Divider(height: 30),
-
-                    Text(
-                      wan['wanName'] ?? '--',
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (index > 0) const Divider(height: 30),
+                  Text(
+                    wan['wanName'] ?? '--',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
                     ),
-
-                    const SizedBox(height: 8),
-
-                    _infoRow('Status', wan['status']),
-                    _infoRow('IP Address', wan['ipAddress']),
-                    _infoRow('VLAN ID', wan['vlanId']),
-                  ],
-                );
-              },
-            ),
-
+                  ),
+                  const SizedBox(height: 8),
+                  _infoRow('Status', wan['status']),
+                  _infoRow('IP Address', wan['ipAddress']),
+                  _infoRow('VLAN ID', wan['vlanId']),
+                ],
+              );
+            }),
             const SizedBox(height: 12),
-
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -220,38 +198,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       ),
     );
   }
-
-  Widget _infoRow(
-    String label,
-    String? value,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value == null || value.isEmpty ? '--' : value,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -278,9 +224,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-
                       const SizedBox(height: 16),
-
                       TextField(
                         controller: _usernameController,
                         decoration: const InputDecoration(
@@ -288,9 +232,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
                       TextField(
                         controller: _passwordController,
                         obscureText: true,
@@ -299,9 +241,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
-
                       const SizedBox(height: 16),
-
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -325,7 +265,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                   ),
                 ),
               ),
-
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Card(
@@ -341,37 +280,19 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                   ),
                 ),
               ],
-
-              if (_successMessage != null) ...[
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      _successMessage!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-
               if (_loggedIn) ...[
                 const SizedBox(height: 12),
-                Card(
+                const Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle),
-                        const SizedBox(width: 10),
+                        Icon(Icons.check_circle),
+                        SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             'Logged in successfully. WAN information is available below.',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
@@ -379,7 +300,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 12),
               _buildWanCard(),
             ],
