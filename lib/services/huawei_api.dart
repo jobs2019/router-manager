@@ -40,18 +40,8 @@ class HuaweiApi {
     final encodedPassword = base64Encode(utf8.encode(password));
     final response = await http.post(
       Uri.parse('$baseUrl/login.cgi'),
-      headers: {
-        ..._headers(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer': '$baseUrl/login.asp',
-        'Origin': baseUrl,
-      },
-      body: {
-        'UserName': username,
-        'PassWord': encodedPassword,
-        'Language': 'english',
-        'x.X_HW_Token': _token!,
-      },
+      headers: {..._headers(), 'Content-Type': 'application/x-www-form-urlencoded', 'Referer': '$baseUrl/login.asp', 'Origin': baseUrl},
+      body: {'UserName': username, 'PassWord': encodedPassword, 'Language': 'english', 'x.X_HW_Token': _token!},
     );
     if (response.statusCode != 200) throw Exception('Huawei login failed (HTTP ${response.statusCode}).');
     final setCookie = response.headers['set-cookie'];
@@ -219,16 +209,33 @@ class HuaweiApi {
   }
 
   String _get2GSsidFromPage(String body) {
+    // The EG8145V5 page exposes the 2.4 GHz SSID in WlanWifiArr. Prefer
+    // a direct scan of the array so harmless JavaScript formatting changes
+    // do not prevent us from finding the ath0 entry.
     final arrayStart = body.indexOf('var WlanWifiArr');
     if (arrayStart < 0) throw Exception('Huawei did not expose WlanWifiArr on the 2.4 GHz page.');
 
+    final arrayEnd = body.indexOf(';', arrayStart);
+    final arrayText = arrayEnd > arrayStart ? body.substring(arrayStart, arrayEnd) : body.substring(arrayStart);
+    final calls = RegExp(r'new\s+stWlanWifi\s*\(([^)]*)\)', dotAll: true).allMatches(arrayText);
+
+    for (final match in calls) {
+      final values = _quotedArguments(match.group(1) ?? '');
+      if (values.length >= 3 && values[0].trim() == 'ath0') {
+        final ssid = values[2].trim();
+        if (ssid.isNotEmpty) return ssid;
+      }
+    }
+
+    // Fallback: scan the full page in case the array is split by generated JS.
     var searchFrom = arrayStart;
     while (true) {
       final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
       if (call == null) break;
       final values = _quotedArguments(call);
-      if (values.isNotEmpty && values.first == 'ath0') {
-        if (values.length >= 3 && values[2].trim().isNotEmpty) return values[2].trim();
+      if (values.length >= 3 && values[0].trim() == 'ath0') {
+        final ssid = values[2].trim();
+        if (ssid.isNotEmpty) return ssid;
       }
       final next = body.indexOf('new stWlanWifi(', searchFrom);
       if (next < 0) break;
@@ -321,16 +328,32 @@ class HuaweiApi {
       body: body,
     );
 
-    if (response.statusCode != 200) throw Exception('Huawei did not accept the Wi-Fi request (HTTP ${response.statusCode}).');
-    final responseBody = response.body.toLowerCase();
-    if (responseBody.contains('login.asp') && responseBody.contains('username')) throw Exception('Huawei session expired. Please log in again.');
-
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    final verifyPage = await _get2GBasicPage();
-    final actualSsid = _get2GSsidFromPage(verifyPage);
-    if (actualSsid != trimmedSsid) {
-      throw Exception('Huawei did not apply the requested 2.4 GHz Wi-Fi name. Current name is "$actualSsid".');
+    // This firmware can return HTTP 404 after it has already accepted and
+    // applied the wireless configuration. Therefore 404 is not treated as
+    // an immediate failure. The verification request below is authoritative.
+    if (response.statusCode != 200 && response.statusCode != 404) {
+      throw Exception('Huawei did not accept the Wi-Fi request (HTTP ${response.statusCode}).');
     }
+
+    final responseBody = response.body.toLowerCase();
+    if (response.statusCode == 200 && responseBody.contains('login.asp') && responseBody.contains('username')) {
+      throw Exception('Huawei session expired. Please log in again.');
+    }
+
+    Exception? lastVerificationError;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      await Future<void>.delayed(Duration(milliseconds: 800 + (attempt * 500)));
+      try {
+        final verifyPage = await _get2GBasicPage();
+        final actualSsid = _get2GSsidFromPage(verifyPage);
+        if (actualSsid == trimmedSsid) return;
+        lastVerificationError = Exception('Huawei did not apply the requested 2.4 GHz Wi-Fi name. Current name is "$actualSsid".');
+      } catch (e) {
+        lastVerificationError = Exception(e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+
+    throw lastVerificationError ?? Exception('Huawei did not confirm the requested 2.4 GHz Wi-Fi settings.');
   }
 
   Future<void> update2GWifiSettings({required HuaweiWifiSettings settings, String? password}) async {
