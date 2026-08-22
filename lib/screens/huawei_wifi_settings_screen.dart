@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/huawei_simple_wifi_settings.dart';
 import '../models/huawei_wifi_settings.dart';
 import '../services/huawei_api.dart';
+import '../services/huawei_wifi_password.dart';
 
 class HuaweiWifiSettingsScreen extends StatefulWidget {
   final HuaweiApi api;
@@ -19,7 +21,8 @@ class HuaweiWifiSettingsScreen extends StatefulWidget {
 class _HuaweiWifiSettingsScreenState
     extends State<HuaweiWifiSettingsScreen> {
   final _ssidController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
   final _maxDevicesController = TextEditingController();
   final _groupRekeyController = TextEditingController();
 
@@ -45,7 +48,8 @@ class _HuaweiWifiSettingsScreenState
   @override
   void dispose() {
     _ssidController.dispose();
-    _passwordController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
     _maxDevicesController.dispose();
     _groupRekeyController.dispose();
     super.dispose();
@@ -61,6 +65,11 @@ class _HuaweiWifiSettingsScreenState
     try {
       final settings = await widget.api.get2GWifiSettings();
       _applySettings(settings);
+
+      final currentPassword = await widget.api.get2GCurrentPassword();
+      if (mounted) {
+        _currentPasswordController.text = currentPassword;
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -94,6 +103,7 @@ class _HuaweiWifiSettingsScreenState
     final ssid = _ssidController.text.trim();
     final maxDevices = int.tryParse(_maxDevicesController.text.trim());
     final groupRekey = int.tryParse(_groupRekeyController.text.trim());
+    final newPassword = _newPasswordController.text.trim();
 
     if (ssid.isEmpty || ssid.length > 32) {
       _showError('Wi-Fi name must contain 1–32 characters.');
@@ -110,10 +120,9 @@ class _HuaweiWifiSettingsScreenState
       return;
     }
 
-    final password = _passwordController.text;
-    if (password.isNotEmpty &&
-        (password.length < 8 || password.length > 63)) {
-      _showError('Wi-Fi password must contain 8–63 characters.');
+    if (newPassword.isNotEmpty &&
+        (newPassword.length < 8 || newPassword.length > 63)) {
+      _showError('New Wi-Fi password must contain 8–63 characters.');
       return;
     }
 
@@ -136,16 +145,45 @@ class _HuaweiWifiSettingsScreenState
     });
 
     try {
+      // The captured Huawei simple Wi-Fi request is the reliable path for
+      // changing the PSK. It updates m.Key and psk1.PreSharedKey.
+      if (newPassword.isNotEmpty) {
+        final simple = await widget.api.getSimpleWifiSettings();
+
+        final updated2G = HuaweiSimpleWifiBandSettings(
+          enabled: settings.enabled,
+          ssid: settings.ssid,
+          broadcastSsid: settings.broadcastSsid,
+          wmmEnabled: simple.band2G.wmmEnabled,
+          staIsolation: simple.band2G.staIsolation,
+          maxAssociateNum: simple.band2G.maxAssociateNum,
+        );
+
+        await widget.api.updateSimpleWifiSettings(
+          band2G: updated2G,
+          band5G: simple.band5G,
+          password2G: newPassword,
+        );
+      }
+
+      // Keep the existing advanced 2.4 GHz save path for the security
+      // settings. Do not send the password through this path because the
+      // simplewificfg request above is the captured working password path.
       await widget.api.update2GWifiSettings(
         settings: settings,
-        password: password.isEmpty ? null : password,
+        password: null,
       );
 
       if (!mounted) return;
 
-      _passwordController.clear();
+      final currentPassword = await widget.api.get2GCurrentPassword();
+      _newPasswordController.clear();
+      _currentPasswordController.text = currentPassword;
+
       setState(() {
-        _success = '2.4 GHz Wi-Fi settings saved successfully.';
+        _success = newPassword.isEmpty
+            ? '2.4 GHz Wi-Fi settings saved successfully.'
+            : '2.4 GHz Wi-Fi settings and password saved successfully.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -208,24 +246,6 @@ class _HuaweiWifiSettingsScreenState
     );
   }
 
-  Widget _switchTile({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return SwitchListTile.adaptive(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(subtitle),
-      value: value,
-      onChanged: onChanged,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -265,11 +285,7 @@ class _HuaweiWifiSettingsScreenState
                       ),
                       child: const Row(
                         children: [
-                          Icon(
-                            Icons.wifi_rounded,
-                            color: Colors.white,
-                            size: 34,
-                          ),
+                          Icon(Icons.wifi_rounded, color: Colors.white, size: 34),
                           SizedBox(width: 14),
                           Expanded(
                             child: Column(
@@ -341,21 +357,22 @@ class _HuaweiWifiSettingsScreenState
                         children: [
                           const Text(
                             'Network',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                            ),
+                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 12),
-                          _switchTile(
-                            title: 'Wi-Fi Enabled',
-                            subtitle: _enabled
-                                ? '2.4 GHz wireless network is active.'
-                                : '2.4 GHz wireless network is disabled.',
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Wi-Fi Enabled',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: Text(
+                              _enabled
+                                  ? '2.4 GHz wireless network is active.'
+                                  : '2.4 GHz wireless network is disabled.',
+                            ),
                             value: _enabled,
-                            onChanged: (value) {
-                              setState(() => _enabled = value);
-                            },
+                            onChanged: (value) => setState(() => _enabled = value),
                           ),
                           const SizedBox(height: 8),
                           TextField(
@@ -363,9 +380,19 @@ class _HuaweiWifiSettingsScreenState
                             maxLength: 32,
                             decoration: _decoration('Wi-Fi Name (SSID)'),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           TextField(
-                            controller: _passwordController,
+                            controller: _currentPasswordController,
+                            readOnly: true,
+                            obscureText: false,
+                            decoration: _decoration(
+                              'Current Wi-Fi Password',
+                              hint: 'Router did not expose the password',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _newPasswordController,
                             obscureText: true,
                             maxLength: 63,
                             decoration: _decoration(
@@ -373,65 +400,9 @@ class _HuaweiWifiSettingsScreenState
                               hint: 'Leave blank to keep current password',
                             ),
                           ),
-                          const SizedBox(height: 4),
                           Text(
-                            'Password must be 8–63 characters. The current password is never displayed.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _card(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Wireless Options',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _switchTile(
-                            title: 'Broadcast SSID',
-                            subtitle: _broadcast
-                                ? 'Nearby devices can see this network.'
-                                : 'The network name is hidden.',
-                            value: _broadcast,
-                            onChanged: (value) {
-                              setState(() => _broadcast = value);
-                            },
-                          ),
-                          _switchTile(
-                            title: 'WMM',
-                            subtitle: 'Wireless multimedia quality of service.',
-                            value: _wmm,
-                            onChanged: (value) {
-                              setState(() => _wmm = value);
-                            },
-                          ),
-                          _switchTile(
-                            title: 'WPS',
-                            subtitle: _wps
-                                ? 'Push-button WPS is enabled.'
-                                : 'WPS is disabled.',
-                            value: _wps,
-                            onChanged: (value) {
-                              setState(() => _wps = value);
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _maxDevicesController,
-                            keyboardType: TextInputType.number,
-                            decoration: _decoration(
-                              'Maximum Connected Devices',
-                            ),
+                            'The current password is read-only. Enter a new password only when you want to change it.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
                         ],
                       ),
@@ -443,10 +414,7 @@ class _HuaweiWifiSettingsScreenState
                         children: [
                           const Text(
                             'Security',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                            ),
+                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 14),
                           DropdownButtonFormField<String>(
@@ -506,19 +474,14 @@ class _HuaweiWifiSettingsScreenState
                                 ),
                               )
                             : const Icon(Icons.save_rounded),
-                        label: Text(
-                          _saving ? 'Saving...' : 'Save Wi-Fi Settings',
-                        ),
+                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Settings'),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Saving Wi-Fi settings may temporarily disconnect devices using this network.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                   ],
                 ),
