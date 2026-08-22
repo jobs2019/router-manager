@@ -17,11 +17,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController =
-      TextEditingController(text: 'admin');
-
-  final _passwordController =
-      TextEditingController();
+  final _usernameController = TextEditingController(text: 'admin');
+  final _passwordController = TextEditingController();
 
   bool _loading = false;
 
@@ -50,8 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      if (widget.profile.routerType ==
-          RouterType.suncommSe06Pro) {
+      if (widget.profile.routerType == RouterType.suncommSe06Pro) {
         final api = Se06Api(
           routerIp: widget.profile.currentIp,
         );
@@ -70,8 +66,9 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         );
-      } else if (widget.profile.routerType ==
-          RouterType.huaweiHg8145x6) {
+      } else if (widget.profile.routerType == RouterType.huaweiEg8145v5) {
+        // Kept as a safe fallback for any older navigation path.
+        // The normal Huawei flow now skips this generic login screen.
         if (!mounted) return;
 
         Navigator.of(context).pushReplacement(
