@@ -19,7 +19,7 @@ class HuaweiTestScreen extends StatefulWidget {
 }
 
 class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
-  static const _idleTimeout = Duration(minutes: 15);
+  static const _idleTimeout = Duration(minutes: 1);
 
   late final HuaweiApi _api;
   Timer? _idleTimer;
@@ -82,7 +82,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
     if (automatic) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Huawei session ended after 15 minutes of inactivity.')),
+        const SnackBar(content: Text('Huawei session ended after 1 minute of inactivity.')),
       );
     }
   }
