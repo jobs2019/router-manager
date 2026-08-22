@@ -81,10 +81,28 @@ class HuaweiDeviceAccessControlService {
     return null;
   }
 
-  /// Returns null when the router page does not contain a recognizable
-  /// Access Control input. This is deliberately different from `false` so
-  /// that a parser mismatch cannot be reported as "Huawei is OFF".
-  bool? _isAccessControlEnabled(String body) {
+  /// Primary parser: Huawei itself exposes the authoritative Access Control
+  /// state in NewAclEnableInfo and then calls setCheck() with its enable value.
+  /// A DOM checkbox parse is retained only as a fallback for firmware variants
+  /// that do not expose the JavaScript object.
+  bool? _extractHuaweiAccessControlState(String body) {
+    final match = RegExp(
+      r'''var\s+NewAclEnableInfo\s*=\s*new\s+Array\s*\(\s*new\s+stNewAclEnable\s*\(\s*["']InternetGatewayDevice\.X_HW_Security\.AclServices\.AccessControl["']\s*,\s*["']([01])["']\s*\)''',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(body);
+
+    final value = match?.group(1);
+    if (value == '1') return true;
+    if (value == '0') return false;
+
+    return _isAccessControlEnabledFromInput(body);
+  }
+
+  /// Fallback only. Do not use this before NewAclEnableInfo because Huawei's
+  /// generated page can represent the checkbox through JavaScript rather than
+  /// a literal checked attribute.
+  bool? _isAccessControlEnabledFromInput(String body) {
     final inputTags = RegExp(
       r'<input\b[^>]*>',
       caseSensitive: false,
@@ -124,11 +142,11 @@ class HuaweiDeviceAccessControlService {
     required int httpStatus,
     required String token,
   }) {
-    final enabled = _isAccessControlEnabled(body);
+    final enabled = _extractHuaweiAccessControlState(body);
     if (enabled == null) {
       throw Exception(
         'Huawei Access Control state could not be parsed from newacl.asp. '
-        'The page did not expose the expected Access Control input. '
+        'NewAclEnableInfo and the checkbox fallback were both unavailable. '
         'This is a parser/firmware response mismatch, not an OFF state.',
       );
     }
