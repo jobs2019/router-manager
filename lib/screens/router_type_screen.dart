@@ -3,11 +3,11 @@ import '../models/router_profile.dart';
 import 'router_ip_screen.dart';
 
 class RouterTypeScreen extends StatefulWidget {
-  final String detectedIp;
+  final String? detectedIp;
 
   const RouterTypeScreen({
     super.key,
-    required this.detectedIp,
+    this.detectedIp,
   });
 
   @override
@@ -77,10 +77,11 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Detected gateway: ${widget.detectedIp}',
-            ),
+            if (widget.detectedIp != null &&
+                widget.detectedIp!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Detected gateway: ${widget.detectedIp}'),
+            ],
             const SizedBox(height: 24),
             Expanded(
               child: RadioGroup<RouterType>(
