@@ -53,6 +53,30 @@ class HuaweiApi {
     throw Exception('Huawei login was not accepted. Please check the username and password.');
   }
 
+  Future<void> logout() async {
+    final cookie = _cookie;
+    try {
+      if (cookie != null && cookie.isNotEmpty) {
+        // Huawei EG8145V5 firmware normally exposes logout.cgi. This is
+        // best-effort because some firmware revisions simply invalidate the
+        // session when the client stops using the cookie.
+        await http.get(
+          Uri.parse('$baseUrl/logout.cgi'),
+          headers: {
+            ..._headers(),
+            'Referer': '$baseUrl/index.asp',
+          },
+        ).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {
+      // Local session cleanup below is still performed if the router does
+      // not expose the logout endpoint or the request times out.
+    } finally {
+      _token = null;
+      _cookie = null;
+    }
+  }
+
   Future<String> getPage(String path) async {
     final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers());
     if (response.statusCode != 200) throw Exception('Huawei router returned HTTP ${response.statusCode}.');
@@ -209,9 +233,6 @@ class HuaweiApi {
   }
 
   String _get2GSsidFromPage(String body) {
-    // The EG8145V5 page exposes the 2.4 GHz SSID in WlanWifiArr. Prefer
-    // a direct scan of the array so harmless JavaScript formatting changes
-    // do not prevent us from finding the ath0 entry.
     final arrayStart = body.indexOf('var WlanWifiArr');
     if (arrayStart < 0) throw Exception('Huawei did not expose WlanWifiArr on the 2.4 GHz page.');
 
@@ -221,20 +242,19 @@ class HuaweiApi {
 
     for (final match in calls) {
       final values = _quotedArguments(match.group(1) ?? '');
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
+      if (values.length >= 4 && values[1].trim() == 'ath0') {
+        final ssid = values[3].trim();
         if (ssid.isNotEmpty) return ssid;
       }
     }
 
-    // Fallback: scan the full page in case the array is split by generated JS.
     var searchFrom = arrayStart;
     while (true) {
       final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
       if (call == null) break;
       final values = _quotedArguments(call);
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
+      if (values.length >= 4 && values[1].trim() == 'ath0') {
+        final ssid = values[3].trim();
         if (ssid.isNotEmpty) return ssid;
       }
       final next = body.indexOf('new stWlanWifi(', searchFrom);
@@ -328,9 +348,6 @@ class HuaweiApi {
       body: body,
     );
 
-    // This firmware can return HTTP 404 after it has already accepted and
-    // applied the wireless configuration. Therefore 404 is not treated as
-    // an immediate failure. The verification request below is authoritative.
     if (response.statusCode != 200 && response.statusCode != 404) {
       throw Exception('Huawei did not accept the Wi-Fi request (HTTP ${response.statusCode}).');
     }

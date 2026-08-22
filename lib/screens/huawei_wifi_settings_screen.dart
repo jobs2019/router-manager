@@ -44,14 +44,78 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
-      final settings = await widget.api.get2GWifiSettings();
-      if (!mounted) return;
-      _ssidController.text = settings.ssid;
+      // Keep the existing parser first. If it cannot find WlanWifiArr,
+      // read the current SSID directly from the y.SSID field on the same
+      // WlanBasic.asp?2G page. The proven write request is untouched.
+      try {
+        final settings = await widget.api.get2GWifiSettings();
+        if (!mounted) return;
+        _ssidController.text = settings.ssid;
+      } catch (_) {
+        final page = await widget.api.getPage('/html/amp/wlanbasic/WlanBasic.asp?2G');
+        final ssid = _extractCurrentSsid(page);
+        if (ssid == null || ssid.isEmpty) {
+          throw Exception('Huawei did not expose the current 2.4 GHz Wi-Fi name.');
+        }
+        if (!mounted) return;
+        _ssidController.text = ssid;
+      }
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String? _extractCurrentSsid(String body) {
+    // Huawei firmware is not consistent about attribute order, quote style,
+    // or whitespace. Find the input element containing name=y.SSID and then
+    // extract its value regardless of those harmless HTML differences.
+    final inputMatches = RegExp(r'<input\b[^>]*>', caseSensitive: false, dotAll: true).allMatches(body);
+
+    for (final match in inputMatches) {
+      final input = match.group(0) ?? '';
+      final hasSsidName = RegExp(
+        r'''\bname\s*=\s*["']y\.SSID["']''',
+        caseSensitive: false,
+      ).hasMatch(input);
+      if (!hasSsidName) continue;
+
+      final valueMatch = RegExp(
+        r'''\bvalue\s*=\s*["']([^"']*)["']''',
+        caseSensitive: false,
+      ).firstMatch(input);
+      final value = valueMatch?.group(1)?.trim() ?? '';
+      if (value.isNotEmpty) return _decodeHtml(value);
+    }
+
+    // Some firmware builds can render the field with escaped quotes inside
+    // generated JavaScript. Try a small direct search around y.SSID as well.
+    final ssidIndex = body.toLowerCase().indexOf('y.ssid');
+    if (ssidIndex >= 0) {
+      final start = body.lastIndexOf('<input', ssidIndex);
+      final end = body.indexOf('>', ssidIndex);
+      if (start >= 0 && end > start) {
+        final input = body.substring(start, end + 1);
+        final valueMatch = RegExp(
+          r'''\bvalue\s*=\s*["']([^"']*)["']''',
+          caseSensitive: false,
+        ).firstMatch(input);
+        final value = valueMatch?.group(1)?.trim() ?? '';
+        if (value.isNotEmpty) return _decodeHtml(value);
+      }
+    }
+
+    return null;
+  }
+
+  String _decodeHtml(String value) {
+    return value
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
   }
 
   Future<void> _save() async {
@@ -84,7 +148,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
       if (!mounted) return;
       _passwordController.clear();
       setState(() {
-        _success = '2.4 GHz Wi-Fi name was verified as changed. The password was submitted to Huawei.';
+        _success = '2.4 GHz Wi-Fi name and password were applied successfully.';
       });
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
@@ -215,42 +279,41 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                           TextField(
                             controller: _ssidController,
                             maxLength: 32,
-                            autocorrect: false,
-                            enableSuggestions: false,
                             decoration: _decoration('Wi-Fi Name (SSID)'),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           TextField(
                             controller: _passwordController,
-                            obscureText: false,
                             maxLength: 63,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
+                            obscureText: false,
+                            decoration: _decoration('New Wi-Fi Password'),
                           ),
+                          const SizedBox(height: 4),
                           Text(
-                            'The existing password is not read from telecomadmin. Enter the password you want the 2.4 GHz network to use.',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                            'The existing password is not read from telecomadmin. Enter a new password only when you want to change it.',
+                            style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 56,
+                            child: FilledButton.icon(
+                              onPressed: _saving ? null : _save,
+                              icon: _saving
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.save_rounded),
+                              label: Text(_saving ? 'Applying...' : 'Save Wi-Fi Name & Password'),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(
+                            child: Text(
+                              'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 54,
-                      child: FilledButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: _saving
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.save_rounded),
-                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Name & Password'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                   ],
                 ),
