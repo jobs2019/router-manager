@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
+import '../services/huawei_session_test.dart';
 import 'huawei_wifi_settings_screen.dart';
 
 class HuaweiTestScreen extends StatefulWidget {
@@ -24,9 +25,11 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   bool _loading = false;
   bool _loggedIn = false;
   bool _loadingWan = false;
+  bool _testingSession = false;
 
   String? _error;
   List<Map<String, String>>? _wanData;
+  HuaweiSessionTestResult? _sessionResult;
 
   @override
   void initState() {
@@ -48,6 +51,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       _error = null;
       _loggedIn = false;
       _wanData = null;
+      _sessionResult = null;
     });
     try {
       await _api.login(
@@ -63,6 +67,44 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  Future<void> _runSessionTest() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _testingSession = true;
+      _sessionResult = null;
+    });
+
+    final test = HuaweiSessionTest(
+      baseUrl: 'http://${widget.routerIp}',
+    );
+
+    try {
+      final result = await test.run(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      setState(() => _sessionResult = result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sessionResult = HuaweiSessionTestResult(
+          loginSuccess: false,
+          sidFound: false,
+          tokenFound: false,
+          loginStatus: 0,
+          pageStatus: 0,
+          sidLength: 0,
+          tokenLength: 0,
+          message: _cleanError(e),
+        );
+      });
+    } finally {
+      test.close();
+      if (mounted) setState(() => _testingSession = false);
+    }
   }
 
   Future<void> _loadWan() async {
@@ -171,6 +213,81 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       ),
     );
   }
+
+  Widget _buildSessionTestCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('Huawei Session Test', 'Automatically obtain the SID and fresh onttoken.'),
+            const SizedBox(height: 8),
+            Text(
+              'Read-only test. It does not change any router setting.',
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _testingSession ? null : _runSessionTest,
+                icon: _testingSession
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.key_rounded),
+                label: Text(_testingSession ? 'Testing session...' : 'Test Huawei Session'),
+              ),
+            ),
+            if (_sessionResult != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _sessionResult!.loginSuccess && _sessionResult!.sidFound && _sessionResult!.tokenFound
+                      ? Colors.green.withValues(alpha: 0.08)
+                      : Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    _sessionStatusRow('Login', _sessionResult!.loginSuccess),
+                    _sessionStatusRow('SID found', _sessionResult!.sidFound),
+                    _sessionStatusRow('onttoken found', _sessionResult!.tokenFound),
+                    _infoRow('Login HTTP', _sessionResult!.loginStatus.toString()),
+                    _infoRow('Page HTTP', _sessionResult!.pageStatus == 0 ? '--' : _sessionResult!.pageStatus.toString()),
+                    _infoRow('SID length', _sessionResult!.sidLength.toString()),
+                    _infoRow('Token length', _sessionResult!.tokenLength.toString()),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _sessionResult!.message,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sessionStatusRow(String label, bool value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Icon(value ? Icons.check_circle : Icons.cancel, color: value ? Colors.green : Colors.red, size: 20),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 
   Widget _infoRow(String label, String? value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
@@ -316,6 +433,8 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildRouterHeader(),
+              const SizedBox(height: 16),
+              _buildSessionTestCard(),
               const SizedBox(height: 16),
               if (!_loggedIn) _buildLoginCard(),
               if (_error != null) ...[
