@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/huawei_simple_wifi_settings.dart';
 import '../models/huawei_wifi_settings.dart';
 import '../services/huawei_api.dart';
 
@@ -13,23 +12,15 @@ class HuaweiWifiSettingsScreen extends StatefulWidget {
   });
 
   @override
-  State<HuaweiWifiSettingsScreen> createState() =>
-      _HuaweiWifiSettingsScreenState();
+  State<HuaweiWifiSettingsScreen> createState() => _HuaweiWifiSettingsScreenState();
 }
 
 class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   final _ssidController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _maxDevicesController = TextEditingController();
-  final _groupRekeyController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
-  bool _enabled = true;
-
-  String _authenticationMode = 'PSKAuthentication';
-  String _encryptionMode = 'TKIPandAESEncryption';
-
   String? _error;
   String? _success;
 
@@ -42,9 +33,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   @override
   void dispose() {
     _ssidController.dispose();
-    _newPasswordController.dispose();
-    _maxDevicesController.dispose();
-    _groupRekeyController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -56,72 +45,31 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
+      // Deliberately use only WlanBasic.asp?2G for this test.
       final settings = await widget.api.get2GWifiSettings();
-      _applySettings(settings);
+      if (!mounted) return;
+      _ssidController.text = settings.ssid;
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = _cleanError(e);
-        });
-      }
+      if (mounted) setState(() => _error = _cleanError(e));
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  void _applySettings(HuaweiWifiSettings settings) {
-    _enabled = settings.enabled;
-    _authenticationMode = settings.authenticationMode;
-    _encryptionMode = settings.encryptionMode;
-    _ssidController.text = settings.ssid;
-    _maxDevicesController.text = settings.maxAssociateNum.toString();
-    _groupRekeyController.text = settings.groupRekey.toString();
   }
 
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
 
     final ssid = _ssidController.text.trim();
-    final maxDevices = int.tryParse(_maxDevicesController.text.trim());
-    final groupRekey = int.tryParse(_groupRekeyController.text.trim());
-    final newPassword = _newPasswordController.text.trim();
+    final password = _passwordController.text.trim();
 
     if (ssid.isEmpty || ssid.length > 32) {
       _showError('Wi-Fi name must contain 1–32 characters.');
       return;
     }
-
-    if (maxDevices == null || maxDevices < 1 || maxDevices > 32) {
-      _showError('Maximum devices must be between 1 and 32.');
+    if (password.length < 8 || password.length > 63) {
+      _showError('Wi-Fi password must contain 8–63 characters.');
       return;
     }
-
-    if (groupRekey == null || groupRekey < 600 || groupRekey > 86400) {
-      _showError('Group key interval must be between 600 and 86400 seconds.');
-      return;
-    }
-
-    if (newPassword.isNotEmpty &&
-        (newPassword.length < 8 || newPassword.length > 63)) {
-      _showError('New Wi-Fi password must contain 8–63 characters.');
-      return;
-    }
-
-    final settings = HuaweiWifiSettings(
-      enabled: _enabled,
-      ssid: ssid,
-      broadcastSsid: true,
-      wmmEnabled: true,
-      maxAssociateNum: maxDevices,
-      authenticationMode: _authenticationMode,
-      encryptionMode: _encryptionMode,
-      groupRekey: groupRekey,
-      wpsEnabled: false,
-    );
 
     setState(() {
       _saving = true;
@@ -130,62 +78,24 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
 
     try {
-      // The captured Huawei simple Wi-Fi request is the working path for
-      // changing the 2.4 GHz PSK. It updates both m.Key and
-      // psk1.PreSharedKey on the router.
-      if (newPassword.isNotEmpty) {
-        final simple = await widget.api.getSimpleWifiSettings();
-
-        final updated2G = HuaweiSimpleWifiBandSettings(
-          enabled: settings.enabled,
-          ssid: settings.ssid,
-          broadcastSsid: settings.broadcastSsid,
-          wmmEnabled: simple.band2G.wmmEnabled,
-          staIsolation: simple.band2G.staIsolation,
-          maxAssociateNum: simple.band2G.maxAssociateNum,
-        );
-
-        await widget.api.updateSimpleWifiSettings(
-          band2G: updated2G,
-          band5G: simple.band5G,
-          password2G: newPassword,
-        );
-      }
-
-      // Keep the existing advanced 2.4 GHz save path for the settings that
-      // are currently exposed in this screen. The password is intentionally
-      // omitted here; it is handled by the captured simple Wi-Fi request.
-      await widget.api.update2GWifiSettings(
-        settings: settings,
-        password: null,
+      await widget.api.update2GWifiNameAndPassword(
+        ssid: ssid,
+        password: password,
       );
 
       if (!mounted) return;
-
-      _newPasswordController.clear();
-
+      _passwordController.clear();
       setState(() {
-        _success = newPassword.isEmpty
-            ? '2.4 GHz Wi-Fi settings saved successfully.'
-            : '2.4 GHz Wi-Fi password changed successfully.';
+        _success = '2.4 GHz Wi-Fi name and password were sent to Huawei.';
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = _cleanError(e);
-      });
+      if (mounted) setState(() => _error = _cleanError(e));
     } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  String _cleanError(Object error) {
-    return error.toString().replaceFirst('Exception: ', '');
-  }
+  String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '');
 
   void _showError(String message) {
     setState(() {
@@ -198,19 +108,14 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Color(0xFFB00020),
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: Color(0xFFB00020), width: 1.5),
       ),
     );
   }
@@ -223,10 +128,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: Colors.grey.shade200),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: child,
-      ),
+      child: Padding(padding: const EdgeInsets.all(18), child: child),
     );
   }
 
@@ -235,10 +137,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F8),
       appBar: AppBar(
-        title: const Text(
-          '2.4 GHz Wi-Fi',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
+        title: const Text('2.4 GHz Wi-Fi', style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: const Color(0xFFF7F7F8),
         elevation: 0,
         actions: [
@@ -275,19 +174,9 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  '2.4 GHz Wi-Fi',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                                Text('2.4 GHz Wi-Fi', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
                                 SizedBox(height: 4),
-                                Text(
-                                  'Basic wireless settings',
-                                  style: TextStyle(color: Colors.white70),
-                                ),
+                                Text('Huawei Basic Network', style: TextStyle(color: Colors.white70)),
                               ],
                             ),
                           ),
@@ -301,15 +190,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                           children: [
                             Icon(Icons.error_outline, color: Colors.red.shade700),
                             const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: Colors.red.shade700,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                            Expanded(child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600))),
                           ],
                         ),
                       ),
@@ -321,15 +202,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                           children: [
                             Icon(Icons.check_circle, color: Colors.green.shade700),
                             const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                _success!,
-                                style: TextStyle(
-                                  color: Colors.green.shade800,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                            Expanded(child: Text(_success!, style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.w600))),
                           ],
                         ),
                       ),
@@ -339,98 +212,27 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Network',
-                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 12),
-                          SwitchListTile.adaptive(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text(
-                              'Wi-Fi Enabled',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: Text(
-                              _enabled
-                                  ? '2.4 GHz wireless network is active.'
-                                  : '2.4 GHz wireless network is disabled.',
-                            ),
-                            value: _enabled,
-                            onChanged: (value) => setState(() => _enabled = value),
-                          ),
-                          const SizedBox(height: 8),
+                          const Text('Wi-Fi Settings', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 16),
                           TextField(
                             controller: _ssidController,
                             maxLength: 32,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             decoration: _decoration('Wi-Fi Name (SSID)'),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 8),
                           TextField(
-                            controller: _newPasswordController,
+                            controller: _passwordController,
                             obscureText: false,
                             maxLength: 63,
                             autocorrect: false,
                             enableSuggestions: false,
-                            decoration: _decoration(
-                              'New Wi-Fi Password',
-                              hint: 'Leave blank to keep current password',
-                            ),
+                            decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
                           ),
                           Text(
-                            'The router does not expose the existing password to telecomadmin. Enter a new password only when you want to change it.',
+                            'The existing password is not read from telecomadmin. Enter the password you want the 2.4 GHz network to use.',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _card(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Security',
-                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 14),
-                          DropdownButtonFormField<String>(
-                            initialValue: _authenticationMode,
-                            decoration: _decoration('Authentication'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'PSKAuthentication',
-                                child: Text('WPA/WPA2 Personal'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _authenticationMode = value);
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            initialValue: _encryptionMode,
-                            decoration: _decoration('Encryption'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'TKIPandAESEncryption',
-                                child: Text('TKIP & AES'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _encryptionMode = value);
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _groupRekeyController,
-                            keyboardType: TextInputType.number,
-                            decoration: _decoration(
-                              'Group Key Regeneration Interval (seconds)',
-                            ),
                           ),
                         ],
                       ),
@@ -441,21 +243,14 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                       child: FilledButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save_rounded),
-                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Settings'),
+                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Name & Password'),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Saving Wi-Fi settings may temporarily disconnect devices using this network.',
+                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
