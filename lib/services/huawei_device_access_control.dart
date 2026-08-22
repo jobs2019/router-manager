@@ -81,14 +81,10 @@ class HuaweiDeviceAccessControlService {
     return null;
   }
 
-  /// Reads the actual Access Control checkbox from the returned HTML.
-  ///
-  /// The previous parser assumed that the HTML would contain an input with
-  /// id="portaclwhite" and that the word "checked" would appear inside the
-  /// same tag. That is too strict for Huawei's generated HTML because the
-  /// attribute order/format can vary. We now locate the input by id OR name,
-  /// then inspect the complete tag for checked/checked="checked".
-  bool _isAccessControlEnabled(String body) {
+  /// Returns null when the router page does not contain a recognizable
+  /// Access Control input. This is deliberately different from `false` so
+  /// that a parser mismatch cannot be reported as "Huawei is OFF".
+  bool? _isAccessControlEnabled(String body) {
     final inputTags = RegExp(
       r'<input\b[^>]*>',
       caseSensitive: false,
@@ -113,15 +109,36 @@ class HuaweiDeviceAccessControlService {
 
       if (!isAccessControlInput) continue;
 
-      return RegExp(
-        r'\bchecked(?:\s*=\s*["\']?checked["\']?)?\b',
+      final checked = RegExp(
+        r'''\bchecked(?:\s*=\s*["']?checked["']?)?\b''',
         caseSensitive: false,
       ).hasMatch(tag);
+      return checked;
     }
 
-    // Keep the old known Huawei field as a fallback, but do not invent a
-    // successful state when the router did not expose the control at all.
-    return false;
+    return null;
+  }
+
+  HuaweiDeviceAccessControlStatus _statusFromPage({
+    required String body,
+    required int httpStatus,
+    required String token,
+  }) {
+    final enabled = _isAccessControlEnabled(body);
+    if (enabled == null) {
+      throw Exception(
+        'Huawei Access Control state could not be parsed from newacl.asp. '
+        'The page did not expose the expected Access Control input. '
+        'This is a parser/firmware response mismatch, not an OFF state.',
+      );
+    }
+
+    return HuaweiDeviceAccessControlStatus(
+      enabled: enabled,
+      httpStatus: httpStatus,
+      sidLength: _sid!.length,
+      tokenLength: token.length,
+    );
   }
 
   Future<void> login({
@@ -200,11 +217,10 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    return HuaweiDeviceAccessControlStatus(
-      enabled: _isAccessControlEnabled(response.body),
+    return _statusFromPage(
+      body: response.body,
       httpStatus: response.statusCode,
-      sidLength: _sid!.length,
-      tokenLength: token.length,
+      token: token,
     );
   }
 
