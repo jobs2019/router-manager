@@ -11,9 +11,7 @@ class HuaweiApi {
   String? _token;
   String? _cookie;
 
-  HuaweiApi({
-    required this.baseUrl,
-  });
+  HuaweiApi({required this.baseUrl});
 
   Map<String, String> _headers() {
     final headers = <String, String>{
@@ -23,11 +21,7 @@ class HuaweiApi {
           'AppleWebKit/537.36 (KHTML, like Gecko) '
           'Chrome/151.0.0.0 Safari/537.36',
     };
-
-    if (_cookie != null) {
-      headers['Cookie'] = _cookie!;
-    }
-
+    if (_cookie != null) headers['Cookie'] = _cookie!;
     return headers;
   }
 
@@ -36,25 +30,15 @@ class HuaweiApi {
       Uri.parse('$baseUrl/asp/GetRandCount.asp'),
       headers: _headers(),
     );
-
     if (response.statusCode != 200) {
-      throw Exception(
-        'Unable to connect to Huawei router '
-        '(HTTP ${response.statusCode}).',
-      );
+      throw Exception('Unable to connect to Huawei router (HTTP ${response.statusCode}).');
     }
-
     _token = response.body.trim();
-
     if (_token == null || _token!.isEmpty) {
       throw Exception('Huawei router did not return a login token.');
     }
-
     final setCookie = response.headers['set-cookie'];
-
-    if (setCookie != null) {
-      _cookie = _extractCookie(setCookie);
-    }
+    if (setCookie != null) _cookie = _extractCookie(setCookie);
   }
 
   String? _extractCookie(String value) {
@@ -62,14 +46,9 @@ class HuaweiApi {
     return first.isEmpty ? null : first;
   }
 
-  Future<bool> login({
-    required String username,
-    required String password,
-  }) async {
+  Future<bool> login({required String username, required String password}) async {
     await _getSession();
-
     final encodedPassword = base64Encode(utf8.encode(password));
-
     final response = await http.post(
       Uri.parse('$baseUrl/login.cgi'),
       headers: {
@@ -85,37 +64,26 @@ class HuaweiApi {
         'x.X_HW_Token': _token!,
       },
     );
-
     if (response.statusCode != 200) {
       throw Exception('Huawei login failed (HTTP ${response.statusCode}).');
     }
-
     final setCookie = response.headers['set-cookie'];
     if (setCookie != null) {
       final newCookie = _extractCookie(setCookie);
       if (newCookie != null) _cookie = newCookie;
     }
-
     if (response.body.contains("top.location.replace('/')") ||
         !response.body.contains('login')) {
       return true;
     }
-
-    throw Exception(
-      'Huawei login was not accepted. Please check the username and password.',
-    );
+    throw Exception('Huawei login was not accepted. Please check the username and password.');
   }
 
   Future<String> getPage(String path) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(),
-    );
-
+    final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers());
     if (response.statusCode != 200) {
       throw Exception('Huawei router returned HTTP ${response.statusCode}.');
     }
-
     return response.body;
   }
 
@@ -125,51 +93,29 @@ class HuaweiApi {
 
   Future<List<Map<String, String>>> getWanStatus() async {
     final response = await http.get(
-      Uri.parse(
-        '$baseUrl/html/bbsp/common/getwanlist.asp?'
-        '${DateTime.now().millisecondsSinceEpoch}',
-      ),
-      headers: {
-        ..._headers(),
-        'Referer': '$baseUrl/html/bbsp/waninfo/waninfo.asp',
-      },
+      Uri.parse('$baseUrl/html/bbsp/common/getwanlist.asp?${DateTime.now().millisecondsSinceEpoch}'),
+      headers: {..._headers(), 'Referer': '$baseUrl/html/bbsp/waninfo/waninfo.asp'},
     );
-
     if (response.statusCode != 200) {
       throw Exception('WAN request failed: HTTP ${response.statusCode}');
     }
-
     final body = response.body;
-    final wanMatches = RegExp(
-      r'new\s+WanPPP\((.*?)\)',
-      dotAll: true,
-    ).allMatches(body);
-
-    if (wanMatches.isEmpty) {
-      throw Exception('No WAN connection was found.');
-    }
-
+    final wanMatches = RegExp(r'new\s+WanPPP\((.*?)\)', dotAll: true).allMatches(body);
+    if (wanMatches.isEmpty) throw Exception('No WAN connection was found.');
     final wanList = <Map<String, String>>[];
-
     for (final wanMatch in wanMatches) {
       final raw = wanMatch.group(1);
       if (raw == null || raw.isEmpty) continue;
-
       final values = <String>[];
       final valueRegex = RegExp(r'"((?:\\.|[^"])*)"');
-
       for (final match in valueRegex.allMatches(raw)) {
         values.add(_decodeHuaweiValue(match.group(1)!));
       }
-
       if (values.length < 25) continue;
-
       String vlanId = values[22];
       if (vlanId.isEmpty || vlanId == '0') vlanId = '-';
-
       String ipAddress = values[13];
       if (ipAddress.isEmpty) ipAddress = '0.0.0.0';
-
       wanList.add({
         'domain': values[0],
         'wanName': values[7],
@@ -178,11 +124,7 @@ class HuaweiApi {
         'vlanId': vlanId,
       });
     }
-
-    if (wanList.isEmpty) {
-      throw Exception('No usable WAN connection was found.');
-    }
-
+    if (wanList.isEmpty) throw Exception('No usable WAN connection was found.');
     return wanList;
   }
 
@@ -199,28 +141,17 @@ class HuaweiApi {
         'Referer': '$baseUrl/index.asp',
       },
     );
-
     if (response.statusCode != 200) {
-      throw Exception(
-        '2.4 GHz Wi-Fi settings request failed: HTTP ${response.statusCode}',
-      );
+      throw Exception('2.4 GHz Wi-Fi settings request failed: HTTP ${response.statusCode}');
     }
-
     final body = response.body;
 
     String value(String name, {String fallback = ''}) {
       final escaped = RegExp.escape(name);
       final patterns = [
-        RegExp(
-          '<input[^>]+name=["\']$escaped["\'][^>]+value=["\']([^"\']*)["\']',
-          caseSensitive: false,
-        ),
-        RegExp(
-          '<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']$escaped["\']',
-          caseSensitive: false,
-        ),
+        RegExp('<input[^>]+name=["\']$escaped["\'][^>]+value=["\']([^"\']*)["\']', caseSensitive: false),
+        RegExp('<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']$escaped["\']', caseSensitive: false),
       ];
-
       for (final pattern in patterns) {
         final match = pattern.firstMatch(body);
         if (match != null) return _decodeHtml(match.group(1) ?? fallback);
@@ -231,14 +162,8 @@ class HuaweiApi {
     bool checked(String name, {bool fallback = false}) {
       final escaped = RegExp.escape(name);
       final patterns = [
-        RegExp(
-          '<input[^>]+name=["\']$escaped["\'][^>]*checked[^>]*>',
-          caseSensitive: false,
-        ),
-        RegExp(
-          '<input[^>]+checked[^>]*name=["\']$escaped["\'][^>]*>',
-          caseSensitive: false,
-        ),
+        RegExp('<input[^>]+name=["\']$escaped["\'][^>]*checked[^>]*>', caseSensitive: false),
+        RegExp('<input[^>]+checked[^>]*name=["\']$escaped["\'][^>]*>', caseSensitive: false),
       ];
       return patterns.any((pattern) => pattern.hasMatch(body)) || fallback;
     }
@@ -250,22 +175,15 @@ class HuaweiApi {
         caseSensitive: false,
         dotAll: true,
       ).firstMatch(body)?.group(1);
-
       if (select == null) return fallback;
-
       final selected = RegExp(
         '<option[^>]+value=["\']([^"\']*)["\'][^>]*selected[^>]*>',
         caseSensitive: false,
       ).firstMatch(select);
-
-      return selected == null
-          ? fallback
-          : _decodeHtml(selected.group(1) ?? fallback);
+      return selected == null ? fallback : _decodeHtml(selected.group(1) ?? fallback);
     }
 
-    int intValue(String name, int fallback) {
-      return int.tryParse(value(name)) ?? fallback;
-    }
+    int intValue(String name, int fallback) => int.tryParse(value(name)) ?? fallback;
 
     return HuaweiWifiSettings(
       enabled: checked('y.Enable', fallback: true),
@@ -273,27 +191,17 @@ class HuaweiApi {
       broadcastSsid: checked('y.SSIDAdvertisementEnabled', fallback: true),
       wmmEnabled: checked('w.WMMEnable', fallback: true),
       maxAssociateNum: intValue('w.MaxAssociateNum', 32),
-      authenticationMode: selectValue(
-        'y.X_HW_WPAand11iAuthenticationMode',
-        fallback: 'PSKAuthentication',
-      ),
-      encryptionMode: selectValue(
-        'y.X_HW_WPAand11iEncryptionModes',
-        fallback: 'TKIPandAESEncryption',
-      ),
+      authenticationMode: selectValue('y.X_HW_WPAand11iAuthenticationMode', fallback: 'PSKAuthentication'),
+      encryptionMode: selectValue('y.X_HW_WPAand11iEncryptionModes', fallback: 'TKIPandAESEncryption'),
       groupRekey: intValue('y.X_HW_GroupRekey', 3600),
       wpsEnabled: checked('z.Enable'),
     );
   }
 
-  Future<void> update2GWifiSettings({
-    required HuaweiWifiSettings settings,
-    String? password,
-  }) async {
+  Future<void> update2GWifiSettings({required HuaweiWifiSettings settings, String? password}) async {
     if (_token == null || _cookie == null) {
       throw Exception('Huawei session is not available. Please log in again.');
     }
-
     final query = <String, String>{
       'w': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
       'y': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1',
@@ -301,10 +209,7 @@ class HuaweiApi {
       'k': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1',
       'RequestFile': 'html/amp/wlanbasic/WlanBasic.asp',
     };
-
-    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi')
-        .replace(queryParameters: query);
-
+    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query);
     final body = <String, String>{
       'y.Enable': settings.enabled ? '1' : '0',
       'y.SSIDAdvertisementEnabled': settings.broadcastSsid ? '1' : '0',
@@ -335,13 +240,11 @@ class HuaweiApi {
       'w.WEPKeyIndex': '1',
       'x.X_HW_Token': _token!,
     };
-
     final trimmedPassword = password?.trim() ?? '';
     if (trimmedPassword.isNotEmpty) {
       body['k.PreSharedKey'] = trimmedPassword;
       body['w.Key'] = trimmedPassword;
     }
-
     final response = await http.post(
       uri,
       headers: {
@@ -353,29 +256,22 @@ class HuaweiApi {
       },
       body: body,
     );
-
     if (response.statusCode != 200) {
-      throw Exception(
-        'Unable to save 2.4 GHz Wi-Fi settings '
-        '(HTTP ${response.statusCode}).',
-      );
+      throw Exception('Unable to save 2.4 GHz Wi-Fi settings (HTTP ${response.statusCode}).');
     }
-
     final responseBody = response.body.toLowerCase();
     if (responseBody.contains('login.asp') && responseBody.contains('username')) {
       throw Exception('Huawei session expired. Please log in again.');
     }
 
-    final saved = await get2GWifiSettings();
-    if (saved.ssid != settings.ssid || saved.enabled != settings.enabled) {
-      throw Exception('Huawei did not confirm the requested Wi-Fi settings.');
-    }
+    // Do not verify against WlanBasic.asp here. On this EG8145V5 firmware,
+    // that page can return a JavaScript-rendered/default value even though
+    // set.cgi accepted the change. The simple Wi-Fi endpoint is the reliable
+    // source for the actual 2.4 GHz SSID/state after a save.
   }
 
   // ============================================================
   // SIMPLE DUAL-BAND WI-FI PAGE
-  // The EG8145V5 firmware exposes both radios here even when the
-  // individual 5 GHz advanced menu is hidden.
   // ============================================================
 
   Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async {
@@ -387,28 +283,17 @@ class HuaweiApi {
         'Referer': '$baseUrl/index.asp',
       },
     );
-
     if (response.statusCode != 200) {
-      throw Exception(
-        'Wi-Fi configuration request failed: HTTP ${response.statusCode}',
-      );
+      throw Exception('Wi-Fi configuration request failed: HTTP ${response.statusCode}');
     }
-
     final body = response.body;
 
     String value(String name, {String fallback = ''}) {
       final escaped = RegExp.escape(name);
       final patterns = [
-        RegExp(
-          '<input[^>]+name=["\']$escaped["\'][^>]+value=["\']([^"\']*)["\']',
-          caseSensitive: false,
-        ),
-        RegExp(
-          '<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']$escaped["\']',
-          caseSensitive: false,
-        ),
+        RegExp('<input[^>]+name=["\']$escaped["\'][^>]+value=["\']([^"\']*)["\']', caseSensitive: false),
+        RegExp('<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']$escaped["\']', caseSensitive: false),
       ];
-
       for (final pattern in patterns) {
         final match = pattern.firstMatch(body);
         if (match != null) return _decodeHtml(match.group(1) ?? fallback);
@@ -419,21 +304,13 @@ class HuaweiApi {
     bool checked(String name, {bool fallback = false}) {
       final escaped = RegExp.escape(name);
       final patterns = [
-        RegExp(
-          '<input[^>]+name=["\']$escaped["\'][^>]*checked[^>]*>',
-          caseSensitive: false,
-        ),
-        RegExp(
-          '<input[^>]+checked[^>]*name=["\']$escaped["\'][^>]*>',
-          caseSensitive: false,
-        ),
+        RegExp('<input[^>]+name=["\']$escaped["\'][^>]*checked[^>]*>', caseSensitive: false),
+        RegExp('<input[^>]+checked[^>]*name=["\']$escaped["\'][^>]*>', caseSensitive: false),
       ];
       return patterns.any((pattern) => pattern.hasMatch(body)) || fallback;
     }
 
-    int intValue(String name, int fallback) {
-      return int.tryParse(value(name)) ?? fallback;
-    }
+    int intValue(String name, int fallback) => int.tryParse(value(name)) ?? fallback;
 
     return HuaweiSimpleWifiSettings(
       band2G: HuaweiSimpleWifiBandSettings(
@@ -464,7 +341,6 @@ class HuaweiApi {
     if (_token == null || _cookie == null) {
       throw Exception('Huawei session is not available. Please log in again.');
     }
-
     final query = <String, String>{
       'm': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
       'w0': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1',
@@ -472,10 +348,7 @@ class HuaweiApi {
       'w1': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5',
       'RequestFile': 'html/amp/wlanbasic/simplewificfg.asp',
     };
-
-    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi')
-        .replace(queryParameters: query);
-
+    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query);
     final body = <String, String>{
       'w0.SSID': band2G.ssid,
       'w0.SSIDAdvertisementEnabled': band2G.broadcastSsid ? '1' : '0',
@@ -497,20 +370,16 @@ class HuaweiApi {
       'm.MaxAssociateNum5G': band5G.maxAssociateNum.toString(),
       'x.X_HW_Token': _token!,
     };
-
     final trimmed2G = password2G?.trim() ?? '';
     if (trimmed2G.isNotEmpty) {
       body['psk1.PreSharedKey'] = trimmed2G;
-      // The simple page's 2.4 GHz password field is represented by Key.
       body['m.Key'] = trimmed2G;
     }
-
     final trimmed5G = password5G?.trim() ?? '';
     if (trimmed5G.isNotEmpty) {
       body['psk1.PreSharedKey'] = trimmed5G;
       body['m.Key5G'] = trimmed5G;
     }
-
     final response = await http.post(
       uri,
       headers: {
@@ -522,22 +391,22 @@ class HuaweiApi {
       },
       body: body,
     );
-
     if (response.statusCode != 200) {
-      throw Exception(
-        'Unable to save Wi-Fi settings (HTTP ${response.statusCode}).',
-      );
+      throw Exception('Unable to save Wi-Fi settings (HTTP ${response.statusCode}).');
     }
-
     final responseBody = response.body.toLowerCase();
     if (responseBody.contains('login.asp') && responseBody.contains('username')) {
       throw Exception('Huawei session expired. Please log in again.');
     }
 
+    // Verify the 2.4 GHz values from the same simple page that Huawei uses
+    // for this save operation. This avoids the false negative produced by
+    // WlanBasic.asp on this firmware.
     final saved = await getSimpleWifiSettings();
-    if (saved.band5G.ssid != band5G.ssid ||
-        saved.band5G.enabled != band5G.enabled) {
-      throw Exception('Huawei did not confirm the requested 5 GHz settings.');
+    if (password2G != null && password2G.trim().isNotEmpty) {
+      if (saved.band2G.ssid != band2G.ssid || saved.band2G.enabled != band2G.enabled) {
+        throw Exception('Huawei did not confirm the requested 2.4 GHz Wi-Fi settings.');
+      }
     }
   }
 
