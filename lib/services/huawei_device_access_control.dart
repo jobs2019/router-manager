@@ -16,6 +16,28 @@ class HuaweiDeviceAccessControlStatus {
   });
 }
 
+class HuaweiAccessControlRule {
+  final String priority;
+  final String srcPortName;
+  final String servicePort;
+  final String srcPortType;
+  final String srcIp;
+  final String mode;
+  final String serviceProto;
+  final String serviceProtoPort;
+
+  const HuaweiAccessControlRule({
+    required this.priority,
+    required this.srcPortName,
+    required this.servicePort,
+    required this.srcPortType,
+    required this.srcIp,
+    required this.mode,
+    required this.serviceProto,
+    required this.serviceProtoPort,
+  });
+}
+
 class HuaweiDeviceAccessControlService {
   final String baseUrl;
   final http.Client _client;
@@ -81,10 +103,6 @@ class HuaweiDeviceAccessControlService {
     return null;
   }
 
-  /// Primary parser: Huawei itself exposes the authoritative Access Control
-  /// state in NewAclEnableInfo and then calls setCheck() with its enable value.
-  /// A DOM checkbox parse is retained only as a fallback for firmware variants
-  /// that do not expose the JavaScript object.
   bool? _extractHuaweiAccessControlState(String body) {
     final match = RegExp(
       r'''var\s+NewAclEnableInfo\s*=\s*new\s+Array\s*\(\s*new\s+stNewAclEnable\s*\(\s*["']InternetGatewayDevice\.X_HW_Security\.AclServices\.AccessControl["']\s*,\s*["']([01])["']\s*\)''',
@@ -99,9 +117,6 @@ class HuaweiDeviceAccessControlService {
     return _isAccessControlEnabledFromInput(body);
   }
 
-  /// Fallback only. Do not use this before NewAclEnableInfo because Huawei's
-  /// generated page can represent the checkbox through JavaScript rather than
-  /// a literal checked attribute.
   bool? _isAccessControlEnabledFromInput(String body) {
     final inputTags = RegExp(
       r'<input\b[^>]*>',
@@ -127,11 +142,10 @@ class HuaweiDeviceAccessControlService {
 
       if (!isAccessControlInput) continue;
 
-      final checked = RegExp(
+      return RegExp(
         r'''\bchecked(?:\s*=\s*["']?checked["']?)?\b''',
         caseSensitive: false,
       ).hasMatch(tag);
-      return checked;
     }
 
     return null;
@@ -249,9 +263,6 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    // Confirmed EG8145V5 browser behavior:
-    // ON  -> x.AccessControlListEnable=1 + x.X_HW_Token
-    // OFF -> x.X_HW_Token only
     final pageResponse = await _client.get(
       Uri.parse('$baseUrl/html/bbsp/portacl/newacl.asp'),
       headers: _headers(referer: '$baseUrl/index.asp'),
@@ -297,8 +308,6 @@ class HuaweiDeviceAccessControlService {
       );
     }
 
-    // HTTP 200 alone is NOT treated as success. The router's subsequent page
-    // state is authoritative.
     final actual = await getStatus();
 
     if (actual.enabled != enabled) {
@@ -311,6 +320,99 @@ class HuaweiDeviceAccessControlService {
     }
 
     return actual;
+  }
+
+  /// Reproduces the additional request observed immediately around Huawei's
+  /// Apply confirmation on the New Access Control page.
+  Future<void> prepareAddEntry() async {
+    if (_cookie == null || _sid == null) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+
+    final response = await _client.get(
+      Uri.parse('$baseUrl/html/ssmp/common/StartFileLoad.asp'),
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/newacl.asp',
+      ),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Huawei StartFileLoad request failed '
+        '(HTTP ${response.statusCode}).',
+      );
+    }
+  }
+
+  /// Confirmed EG8145V5 browser request after the Apply confirmation.
+  ///
+  /// The browser sends exactly these fields:
+  /// x.Priority
+  /// x.SrcPortName
+  /// x.ServicePort
+  /// x.SrcPortType
+  /// x.SrcIp
+  /// x.Mode
+  /// x.ServiceProto
+  /// x.ServiceProtoPort
+  /// x.X_HW_Token
+  Future<void> addEntry(HuaweiAccessControlRule rule) async {
+    if (_cookie == null || _sid == null) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+
+    final pageResponse = await _client.get(
+      Uri.parse('$baseUrl/html/bbsp/portacl/newacl.asp'),
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/newacl.asp',
+      ),
+    );
+
+    if (pageResponse.statusCode != 200) {
+      throw Exception(
+        'Unable to refresh the Access Control form '
+        '(HTTP ${pageResponse.statusCode}).',
+      );
+    }
+
+    final token = _extractOntToken(pageResponse.body);
+    if (token == null) {
+      throw Exception(
+        'Access Control form did not provide a fresh onttoken.',
+      );
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/html/bbsp/portacl/add.cgi'
+      '?x=InternetGatewayDevice.X_HW_Security.AclServices.AccessControl.List'
+      '&RequestFile=html/bbsp/portacl/newacl.asp',
+    );
+
+    final response = await _client.post(
+      uri,
+      headers: _headers(
+        referer: '$baseUrl/html/bbsp/portacl/newacl.asp',
+        form: true,
+      ),
+      body: {
+        'x.Priority': rule.priority,
+        'x.SrcPortName': rule.srcPortName,
+        'x.ServicePort': rule.servicePort,
+        'x.SrcPortType': rule.srcPortType,
+        'x.SrcIp': rule.srcIp,
+        'x.Mode': rule.mode,
+        'x.ServiceProto': rule.serviceProto,
+        'x.ServiceProtoPort': rule.serviceProtoPort,
+        'x.X_HW_Token': token,
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Huawei rejected the Access Control entry '
+        '(HTTP ${response.statusCode}).',
+      );
+    }
   }
 
   void close() => _client.close();
