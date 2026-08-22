@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
+import 'huawei_wifi_settings_screen.dart';
 
 class HuaweiTestScreen extends StatefulWidget {
   const HuaweiTestScreen({
@@ -108,14 +109,6 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
   String _cleanError(Object error) {
     return error.toString().replaceFirst('Exception: ', '');
-  }
-
-  void _showFeatureMessage(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature is planned for the next Huawei module.'),
-      ),
-    );
   }
 
   Widget _sectionTitle(String title, String subtitle) {
@@ -455,15 +448,25 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
         _featureTile(
           icon: Icons.wifi_rounded,
           title: 'Wi-Fi Settings',
-          subtitle: 'SSID, password, 2.4 GHz and 5 GHz',
-          onTap: () => _showFeatureMessage('Wi-Fi Settings'),
+          subtitle: 'Manage your 2.4 GHz wireless network',
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => HuaweiWifiSettingsScreen(api: _api),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 10),
         _featureTile(
           icon: Icons.devices_rounded,
           title: 'Device Access Control',
           subtitle: 'Blocklist, allowlist and connected devices',
-          onTap: () => _showFeatureMessage('Device Access Control'),
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Device Access Control is the next Huawei module.'),
+            ),
+          ),
         ),
       ],
     );
