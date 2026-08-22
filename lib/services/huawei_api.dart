@@ -87,10 +87,6 @@ class HuaweiApi {
     return response.body;
   }
 
-  // ============================================================
-  // WAN INFORMATION
-  // ============================================================
-
   Future<List<Map<String, String>>> getWanStatus() async {
     final response = await http.get(
       Uri.parse('$baseUrl/html/bbsp/common/getwanlist.asp?${DateTime.now().millisecondsSinceEpoch}'),
@@ -128,9 +124,41 @@ class HuaweiApi {
     return wanList;
   }
 
-  // ============================================================
-  // 2.4 GHZ WI-FI - ADVANCED PAGE
-  // ============================================================
+  // Returns the actual SSID names exposed by Huawei's wlan_list.asp.
+  // On this EG8145V5 firmware WLANConfiguration.1 is 2.4 GHz and
+  // WLANConfiguration.5 is 5 GHz, but we match the reported RF band too.
+  Future<Map<String, String>> getWlanSsidNames() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/html/amp/common/wlan_list.asp'),
+      headers: {
+        ..._headers(),
+        'Accept': '*/*',
+        'Referer': '$baseUrl/index.asp',
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Huawei WLAN list request failed: HTTP ${response.statusCode}');
+    }
+
+    final result = <String, String>{};
+    final matches = RegExp(
+      r'new\s+stWlanInfo\(\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"',
+      dotAll: true,
+    ).allMatches(response.body);
+
+    for (final match in matches) {
+      final domain = _decodeHuaweiValue(match.group(1)!);
+      final ssid = _decodeHuaweiValue(match.group(3)!);
+      final band = _decodeHuaweiValue(match.group(6)!);
+      if (ssid.isEmpty) continue;
+      if (band == '2.4GHz') result['2.4'] = ssid;
+      if (band == '5GHz') result['5'] = ssid;
+      if (domain.endsWith('.WLANConfiguration.1')) result['2.4'] = ssid;
+      if (domain.endsWith('.WLANConfiguration.5')) result['5'] = ssid;
+    }
+
+    return result;
+  }
 
   Future<HuaweiWifiSettings> get2GWifiSettings() async {
     final response = await http.get(
@@ -184,10 +212,11 @@ class HuaweiApi {
     }
 
     int intValue(String name, int fallback) => int.tryParse(value(name)) ?? fallback;
+    final names = await getWlanSsidNames();
 
     return HuaweiWifiSettings(
       enabled: checked('y.Enable', fallback: true),
-      ssid: value('y.SSID', fallback: 'HUAWEI-2.4G'),
+      ssid: names['2.4'] ?? value('y.SSID', fallback: 'HUAWEI-2.4G'),
       broadcastSsid: checked('y.SSIDAdvertisementEnabled', fallback: true),
       wmmEnabled: checked('w.WMMEnable', fallback: true),
       maxAssociateNum: intValue('w.MaxAssociateNum', 32),
@@ -263,16 +292,7 @@ class HuaweiApi {
     if (responseBody.contains('login.asp') && responseBody.contains('username')) {
       throw Exception('Huawei session expired. Please log in again.');
     }
-
-    // Do not verify against WlanBasic.asp here. On this EG8145V5 firmware,
-    // that page can return a JavaScript-rendered/default value even though
-    // set.cgi accepted the change. The simple Wi-Fi endpoint is the reliable
-    // source for the actual 2.4 GHz SSID/state after a save.
   }
-
-  // ============================================================
-  // SIMPLE DUAL-BAND WI-FI PAGE
-  // ============================================================
 
   Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async {
     final response = await http.get(
@@ -311,11 +331,12 @@ class HuaweiApi {
     }
 
     int intValue(String name, int fallback) => int.tryParse(value(name)) ?? fallback;
+    final names = await getWlanSsidNames();
 
     return HuaweiSimpleWifiSettings(
       band2G: HuaweiSimpleWifiBandSettings(
         enabled: checked('m.Enable', fallback: true),
-        ssid: value('w0.SSID', fallback: 'HUAWEI-2.4G'),
+        ssid: names['2.4'] ?? value('w0.SSID', fallback: 'HUAWEI-2.4G'),
         broadcastSsid: checked('w0.SSIDAdvertisementEnabled', fallback: true),
         wmmEnabled: checked('m.WMMEnable', fallback: true),
         staIsolation: checked('m.STAIsolation'),
@@ -323,7 +344,7 @@ class HuaweiApi {
       ),
       band5G: HuaweiSimpleWifiBandSettings(
         enabled: checked('m.Enable5G', fallback: true),
-        ssid: value('w1.SSID', fallback: 'HUAWEI-5G'),
+        ssid: names['5'] ?? value('w1.SSID', fallback: 'HUAWEI-5G'),
         broadcastSsid: checked('w1.SSIDAdvertisementEnabled', fallback: true),
         wmmEnabled: checked('m.WMMEnable5G', fallback: true),
         staIsolation: checked('m.STAIsolation5G'),
@@ -371,11 +392,10 @@ class HuaweiApi {
       'x.X_HW_Token': _token!,
     };
     final trimmed2G = password2G?.trim() ?? '';
+    final trimmed5G = password5G?.trim() ?? '';
     if (trimmed2G.isNotEmpty) {
-      body['psk1.PreSharedKey'] = trimmed2G;
       body['m.Key'] = trimmed2G;
     }
-    final trimmed5G = password5G?.trim() ?? '';
     if (trimmed5G.isNotEmpty) {
       body['psk1.PreSharedKey'] = trimmed5G;
       body['m.Key5G'] = trimmed5G;
@@ -398,16 +418,18 @@ class HuaweiApi {
     if (responseBody.contains('login.asp') && responseBody.contains('username')) {
       throw Exception('Huawei session expired. Please log in again.');
     }
+  }
 
-    // Verify the 2.4 GHz values from the same simple page that Huawei uses
-    // for this save operation. This avoids the false negative produced by
-    // WlanBasic.asp on this firmware.
-    final saved = await getSimpleWifiSettings();
-    if (password2G != null && password2G.trim().isNotEmpty) {
-      if (saved.band2G.ssid != band2G.ssid || saved.band2G.enabled != band2G.enabled) {
-        throw Exception('Huawei did not confirm the requested 2.4 GHz Wi-Fi settings.');
-      }
-    }
+  Future<void> update5GWifiSettings({
+    required HuaweiSimpleWifiBandSettings settings,
+    String? password,
+  }) async {
+    final current = await getSimpleWifiSettings();
+    await updateSimpleWifiSettings(
+      band2G: current.band2G,
+      band5G: settings,
+      password5G: password,
+    );
   }
 
   String _decodeHuaweiValue(String value) {
