@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
-import 'huawei_5g_wifi_settings_screen.dart';
 import 'huawei_wifi_settings_screen.dart';
 
 class HuaweiTestScreen extends StatefulWidget {
@@ -287,15 +286,8 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
         _featureTile(
           icon: Icons.wifi_rounded,
           title: '2.4 GHz Wi-Fi',
-          subtitle: 'Manage your 2.4 GHz wireless network',
+          subtitle: 'Change 2.4 GHz Wi-Fi name and password',
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HuaweiWifiSettingsScreen(api: _api))),
-        ),
-        const SizedBox(height: 10),
-        _featureTile(
-          icon: Icons.wifi_find_rounded,
-          title: '5 GHz Wi-Fi',
-          subtitle: 'Manage your 5 GHz wireless network',
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => Huawei5GWifiSettingsScreen(api: _api))),
         ),
         const SizedBox(height: 10),
         _featureTile(
