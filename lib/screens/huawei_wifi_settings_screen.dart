@@ -16,7 +16,6 @@ class HuaweiWifiSettingsScreen extends StatefulWidget {
 
 class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   final _ssidController = TextEditingController();
-  final _passwordController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -32,7 +31,6 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   @override
   void dispose() {
     _ssidController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -58,14 +56,9 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     FocusScope.of(context).unfocus();
 
     final ssid = _ssidController.text.trim();
-    final password = _passwordController.text.trim();
 
     if (ssid.isEmpty || ssid.length > 32) {
       _showError('Wi-Fi name must contain 1–32 characters.');
-      return;
-    }
-    if (password.length < 8 || password.length > 63) {
-      _showError('Wi-Fi password must contain 8–63 characters.');
       return;
     }
 
@@ -78,13 +71,12 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     try {
       await widget.api.update2GWifiNameAndPassword(
         ssid: ssid,
-        password: password,
+        password: '',
       );
 
       if (!mounted) return;
-      _passwordController.clear();
       setState(() {
-        _success = '2.4 GHz Wi-Fi name was verified as changed. The password was submitted to Huawei.';
+        _success = '2.4 GHz Wi-Fi name was verified as changed. Password was not modified.';
       });
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
@@ -102,10 +94,9 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
     });
   }
 
-  InputDecoration _decoration(String label, {String? hint}) {
+  InputDecoration _decoration(String label) {
     return InputDecoration(
       labelText: label,
-      hintText: hint,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -219,17 +210,9 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                             enableSuggestions: false,
                             decoration: _decoration('Wi-Fi Name (SSID)'),
                           ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: false,
-                            maxLength: 63,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
-                          ),
+                          const SizedBox(height: 4),
                           Text(
-                            'The existing password is not read from telecomadmin. Enter the password you want the 2.4 GHz network to use.',
+                            'SSID only for this test. The Wi-Fi password will not be changed.',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
                         ],
@@ -243,12 +226,12 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                         icon: _saving
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.save_rounded),
-                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Name & Password'),
+                        label: Text(_saving ? 'Saving SSID...' : 'Save Wi-Fi Name'),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
+                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the SSID change.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
