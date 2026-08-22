@@ -29,6 +29,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   bool _loadingWan = false;
   bool _loadingAccessSummary = false;
   bool _loggingOut = false;
+  bool _accessControlSessionActive = false;
 
   String? _error;
   List<Map<String, String>>? _wanData;
@@ -59,6 +60,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
       _loading = true;
       _error = null;
       _loggedIn = false;
+      _accessControlSessionActive = false;
       _wanData = null;
       _accessControlEnabled = null;
       _accessControlEntryIndices = null;
@@ -149,6 +151,11 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
     });
 
     try {
+      if (_accessControlSessionActive) {
+        await _accessControlService.logout();
+        _accessControlSessionActive = false;
+      }
+
       await _api.logout();
 
       if (!mounted) return;
@@ -193,6 +200,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
         username: _usernameController.text.trim(),
         password: _passwordController.text,
       );
+      _accessControlSessionActive = true;
 
       final status = await _accessControlService.getStatus();
       final entries = await _accessControlService.getEntryIndices();
