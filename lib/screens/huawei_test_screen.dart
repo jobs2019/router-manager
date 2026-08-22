@@ -28,6 +28,7 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   bool _loggedIn = false;
   bool _loadingWan = false;
   bool _loadingAccessSummary = false;
+  bool _loggingOut = false;
 
   String? _error;
   List<Map<String, String>>? _wanData;
@@ -119,8 +120,11 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
   }
 
   Future<void> _logout() async {
+    if (_loggingOut) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Logout'),
         content: const Text('Are you sure you want to log out of this Huawei router?'),
@@ -139,7 +143,23 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() {
+      _loggingOut = true;
+      _error = null;
+    });
+
+    try {
+      await _api.logout();
+
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loggingOut = false;
+        _error = 'Huawei logout failed: ${_cleanError(e)}';
+      });
+    }
   }
 
   Future<void> _loadWan() async {
@@ -524,8 +544,10 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
           if (_loggedIn)
             IconButton(
               tooltip: 'Logout',
-              icon: const Icon(Icons.logout_rounded),
-              onPressed: _logout,
+              icon: _loggingOut
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.logout_rounded),
+              onPressed: _loggingOut ? null : _logout,
             ),
         ],
       ),
