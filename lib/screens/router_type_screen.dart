@@ -61,6 +61,14 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const routerOrder = <RouterType>[
+      RouterType.huaweiEg8145v5,
+      RouterType.suncommSe06Pro,
+      RouterType.mikrotik,
+      RouterType.zte,
+      RouterType.other,
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Router'),
@@ -94,7 +102,7 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
                   });
                 },
                 child: ListView(
-                  children: RouterType.values.map((type) {
+                  children: routerOrder.map((type) {
                     return Card(
                       child: RadioListTile<RouterType>(
                         value: type,
