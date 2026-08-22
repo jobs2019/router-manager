@@ -27,6 +27,7 @@ class _HuaweiDeviceAccessControlScreenState
   bool _saving = false;
   bool? _enabled;
   String? _error;
+  String? _entryMessage;
   int? _sidLength;
   int? _tokenLength;
 
@@ -77,8 +78,6 @@ class _HuaweiDeviceAccessControlScreenState
   Future<void> _toggle(bool value) async {
     if (_saving || _enabled == null) return;
 
-    // The Huawei browser shows this confirmation before the OFF request.
-    // Cancel simply returns without changing _enabled, so the switch remains ON.
     if (!value) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -110,10 +109,6 @@ class _HuaweiDeviceAccessControlScreenState
     });
 
     try {
-      // Service uses the exact confirmed browser payload:
-      // ON  -> x.AccessControlListEnable=1 + x.X_HW_Token
-      // OFF -> x.X_HW_Token only
-      // It then reads newacl.asp again and verifies the actual router state.
       final status = await _service.setEnabled(value);
 
       if (!mounted) return;
@@ -125,9 +120,69 @@ class _HuaweiDeviceAccessControlScreenState
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() => _error = _cleanError(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
-      // Do not force the switch to the requested value on failure.
-      // Keep showing the last confirmed router state.
+  Future<void> _newEntry() async {
+    if (_saving || _enabled != true) return;
+
+    final rule = await showDialog<HuaweiAccessControlRule>(
+      context: context,
+      builder: (context) => const _NewAccessControlEntryDialog(),
+    );
+
+    if (rule == null || !mounted) return;
+
+    setState(() {
+      _saving = true;
+      _error = null;
+      _entryMessage = null;
+    });
+
+    try {
+      // This request was observed immediately around the Huawei Apply
+      // confirmation. We reproduce it before displaying the confirmation.
+      await _service.prepareAddEntry();
+
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(widget.routerIp),
+          content: const Text(
+            'The connection may be interrupted. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      await _service.addEntry(rule);
+
+      if (!mounted) return;
+      setState(() {
+        _entryMessage =
+            'Huawei accepted the Access Control add request. '
+            'The entry-list response is not parsed yet, so the app will not '
+            'claim that the rule is verified until that browser response is confirmed.';
+      });
+    } catch (e) {
+      if (!mounted) return;
       setState(() => _error = _cleanError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -231,6 +286,48 @@ class _HuaweiDeviceAccessControlScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
+                      'Access Control Entries',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Add a rule using the confirmed EG8145V5 add.cgi request.',
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: enabled == true && !_saving ? _newEntry : null,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New'),
+                    ),
+                    if (_entryMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _entryMessage!,
+                        style: TextStyle(
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
                       'Session',
                       style: TextStyle(
                         fontSize: 17,
@@ -285,9 +382,9 @@ class _HuaweiDeviceAccessControlScreenState
               child: const Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  'Access Control state is read from Huawei and verified again after every change. '
-                  'Connected-device discovery and blacklist/whitelist management will be implemented '
-                  'only after their exact EG8145V5 browser requests are confirmed.',
+                  'Access Control state is read from Huawei and verified again after every ON/OFF change. '
+                  'The Add Entry request now follows the confirmed browser endpoint and field names. '
+                  'Entry-list verification will be added only after its exact browser response is confirmed.',
                 ),
               ),
             ),
@@ -317,4 +414,115 @@ class _HuaweiDeviceAccessControlScreenState
           ],
         ),
       );
+}
+
+class _NewAccessControlEntryDialog extends StatefulWidget {
+  const _NewAccessControlEntryDialog();
+
+  @override
+  State<_NewAccessControlEntryDialog> createState() =>
+      _NewAccessControlEntryDialogState();
+}
+
+class _NewAccessControlEntryDialogState
+    extends State<_NewAccessControlEntryDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _priority = TextEditingController(text: '1');
+  final _srcPortName = TextEditingController(text: 'ALL');
+  final _servicePort = TextEditingController(text: 'HTTP');
+  final _srcPortType = TextEditingController(text: '2');
+  final _srcIp = TextEditingController();
+  final _mode = TextEditingController(text: '0');
+  final _serviceProto = TextEditingController();
+  final _serviceProtoPort = TextEditingController();
+
+  @override
+  void dispose() {
+    _priority.dispose();
+    _srcPortName.dispose();
+    _servicePort.dispose();
+    _srcPortType.dispose();
+    _srcIp.dispose();
+    _mode.dispose();
+    _serviceProto.dispose();
+    _serviceProtoPort.dispose();
+    super.dispose();
+  }
+
+  String _value(TextEditingController controller) => controller.text.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New Access Control Entry'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _field(_priority, 'Priority', required: true),
+                _field(_srcPortName, 'Source Port Name', required: true),
+                _field(_servicePort, 'Service Port', required: true),
+                _field(_srcPortType, 'Source Port Type', required: true),
+                _field(_srcIp, 'Source IP'),
+                _field(_mode, 'Mode', required: true),
+                _field(_serviceProto, 'Service Protocol'),
+                _field(_serviceProtoPort, 'Service Protocol Port'),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.of(context).pop(
+              HuaweiAccessControlRule(
+                priority: _value(_priority),
+                srcPortName: _value(_srcPortName),
+                servicePort: _value(_servicePort),
+                srcPortType: _value(_srcPortType),
+                srcIp: _value(_srcIp),
+                mode: _value(_mode),
+                serviceProto: _value(_serviceProto),
+                serviceProtoPort: _value(_serviceProtoPort),
+              ),
+            );
+          },
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    bool required = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+        validator: required
+            ? (value) => value == null || value.trim().isEmpty
+                ? 'Required'
+                : null
+            : null,
+      ),
+    );
+  }
 }
