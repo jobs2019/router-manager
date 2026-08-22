@@ -124,10 +124,10 @@ class HuaweiApi {
 
   String _findPageToken(String body) {
     final patterns = [
-      RegExp(r'name=["\']x\.X_HW_Token["\'][^>]+value=["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'value=["\']([^"\']+)["\'][^>]+name=["\']x\.X_HW_Token["\']', caseSensitive: false),
-      RegExp(r'x\.X_HW_Token\s*=\s*["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'X_HW_Token["\']?\s*[,=:]\s*["\']([^"\']+)["\']', caseSensitive: false),
+      RegExp('name=["\\']x\\.X_HW_Token["\\'][^>]+value=["\\']([^"\\']+)["\\']', caseSensitive: false),
+      RegExp('value=["\\']([^"\\']+)["\\'][^>]+name=["\\']x\\.X_HW_Token["\\']', caseSensitive: false),
+      RegExp('x\\.X_HW_Token\\s*=\\s*["\\']([^"\\']+)["\\']', caseSensitive: false),
+      RegExp('X_HW_Token["\\']?\\s*[,=:]\\s*["\\']([^"\\']+)["\\']', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
@@ -158,8 +158,6 @@ class HuaweiApi {
     if (trimmedSsid.isEmpty || trimmedSsid.length > 32) throw Exception('Wi-Fi name must contain 1–32 characters.');
     if (trimmedPassword.length < 8 || trimmedPassword.length > 63) throw Exception('Wi-Fi password must contain 8–63 characters.');
 
-    // Huawei generates a page/session token for WlanBasic.asp. Use that token
-    // rather than assuming the login GetRandCount token is the set.cgi token.
     final page = await _get2GBasicPage();
     final pageToken = _findPageToken(page);
     final token = pageToken.isNotEmpty ? pageToken : (_token ?? '');
@@ -227,9 +225,6 @@ class HuaweiApi {
     final responseBody = response.body.toLowerCase();
     if (responseBody.contains('login.asp') && responseBody.contains('username')) throw Exception('Huawei session expired. Please log in again.');
 
-    // Verify only what telecomadmin/WlanBasic can reliably expose: the SSID.
-    // Do not claim that the password was verified because Huawei does not
-    // expose the existing plaintext password to telecomadmin.
     final verifyPage = await _get2GBasicPage();
     final actualSsid = _inputValue(verifyPage, 'y.SSID', fallback: '');
     if (actualSsid.isNotEmpty && actualSsid != trimmedSsid) {
@@ -243,7 +238,6 @@ class HuaweiApi {
     await update2GWifiNameAndPassword(ssid: settings.ssid, password: value);
   }
 
-  // Kept only so the existing 5 GHz screen compiles while its test option is hidden.
   Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async {
     throw Exception('5 GHz/simple Wi-Fi test is temporarily disabled.');
   }
