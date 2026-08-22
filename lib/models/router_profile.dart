@@ -5,7 +5,7 @@ enum IpMode {
 
 enum RouterType {
   suncommSe06Pro,
-  huaweiHg8145x6,
+  huaweiEg8145v5,
   mikrotik,
   zte,
   other,
@@ -30,8 +30,8 @@ class RouterProfile {
     switch (routerType) {
       case RouterType.suncommSe06Pro:
         return 'Suncomm SE06 Pro';
-      case RouterType.huaweiHg8145x6:
-        return 'Huawei HG8145X6';
+      case RouterType.huaweiEg8145v5:
+        return 'Huawei EG8145V5';
       case RouterType.mikrotik:
         return 'MikroTik';
       case RouterType.zte:
