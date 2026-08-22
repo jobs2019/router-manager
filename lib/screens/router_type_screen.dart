@@ -21,7 +21,7 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
     switch (type) {
       case RouterType.suncommSe06Pro:
         return '192.168.100.1';
-      case RouterType.huaweiHg8145x6:
+      case RouterType.huaweiEg8145v5:
         return '192.168.100.1';
       case RouterType.mikrotik:
         return '192.168.88.1';
@@ -36,8 +36,8 @@ class _RouterTypeScreenState extends State<RouterTypeScreen> {
     switch (type) {
       case RouterType.suncommSe06Pro:
         return 'Suncomm SE06 Pro';
-      case RouterType.huaweiHg8145x6:
-        return 'Huawei HG8145X6';
+      case RouterType.huaweiEg8145v5:
+        return 'Huawei EG8145V5';
       case RouterType.mikrotik:
         return 'MikroTik';
       case RouterType.zte:
