@@ -149,318 +149,94 @@ class HuaweiApi {
   // WAN INFORMATION
   // ============================================================
 
-Future<List<Map<String, String>>> getWanStatus() async {
-  final response = await http.get(
-    Uri.parse(
-      '$baseUrl/html/bbsp/common/getwanlist.asp?'
-      '${DateTime.now().millisecondsSinceEpoch}',
-    ),
-    headers: {
-      ..._headers(),
-      'Referer':
-          '$baseUrl/html/bbsp/waninfo/waninfo.asp',
-    },
-  );
-
-  if (response.statusCode != 200) {
-    throw Exception(
-      'WAN request failed: HTTP '
-      '${response.statusCode}',
-    );
-  }
-
-  final body = response.body;
-
-  /*
-   * Huawei returns something similar to:
-   *
-   * var PPPWanList = new Array(
-   *   new WanPPP("...", "...", ...),
-   *   new WanPPP("...", "...", ...),
-   *   null
-   * );
-   *
-   * We must read ALL WanPPP objects.
-   */
-
-  final wanMatches = RegExp(
-    r'new\s+WanPPP\((.*?)\)',
-    dotAll: true,
-  ).allMatches(body);
-
-  if (wanMatches.isEmpty) {
-    throw Exception(
-      'No WAN connection was found.',
-    );
-  }
-
-  final wanList = <Map<String, String>>[];
-
-  for (final wanMatch in wanMatches) {
-    final raw = wanMatch.group(1);
-
-    if (raw == null || raw.isEmpty) {
-      continue;
-    }
-
-    final values = <String>[];
-
-    /*
-     * Extract quoted JavaScript values.
-     */
-    final valueRegex = RegExp(
-      r'"((?:\\.|[^"])*)"',
-    );
-
-    for (final match
-        in valueRegex.allMatches(raw)) {
-      values.add(
-        _decodeHuaweiValue(
-          match.group(1)!,
-        ),
-      );
-    }
-
-    /*
-     * WanPPP contains considerably more than
-     * the four values we need, but make sure
-     * the important fields exist.
-     */
-    if (values.length < 25) {
-      continue;
-    }
-
-    /*
-     * Huawei WanPPP field positions:
-     *
-     * 0  = domain
-     * 2  = ConnectionTrigger
-     * 3  = MACAddress
-     * 4  = Status
-     * 7  = Name
-     * 13 = IPAddress
-     * 22 = VlanId
-     *
-     * These positions come from the Huawei
-     * WanPPP() definition captured from the
-     * router.
-     */
-
-    String vlanId = values[22];
-
-    /*
-     * Huawei represents an untagged WAN as
-     * VLAN 0. Display '-' instead because the
-     * app is showing the user's requested
-     * VLAN ID rather than the internal value.
-     */
-    if (vlanId.isEmpty || vlanId == '0') {
-      vlanId = '-';
-    }
-
-    String ipAddress = values[13];
-
-    if (ipAddress.isEmpty) {
-      ipAddress = '0.0.0.0';
-    }
-
-    wanList.add({
-      'domain': values[0],
-      'wanName': values[7],
-      'status': values[4],
-      'ipAddress': ipAddress,
-      'vlanId': vlanId,
-    });
-  }
-
-  if (wanList.isEmpty) {
-    throw Exception(
-      'No usable WAN connection was found.',
-    );
-  }
-
-  return wanList;
-}
-
-  // ============================================================
-  // ADD PPPoE WAN
-  // ============================================================
-
-  Future<bool> addPppoeWan({
-    required String username,
-    required String password,
-    bool enableVlan = false,
-    int vlanId = 0,
-    int priority = 0,
-    int mtu = 1492,
-    List<String> lanBindings = const [],
-    List<String> ssidBindings = const ['SSID1'],
-  }) async {
-    if (_token == null || _cookie == null) {
-      throw Exception(
-        'Huawei router is not logged in.',
-      );
-    }
-
-    if (username.trim().isEmpty) {
-      throw Exception(
-        'PPPoE username is required.',
-      );
-    }
-
-    if (password.isEmpty) {
-      throw Exception(
-        'PPPoE password is required.',
-      );
-    }
-
-    if (enableVlan &&
-        (vlanId < 1 || vlanId > 4094)) {
-      throw Exception(
-        'VLAN ID must be between 1 and 4094.',
-      );
-    }
-
-    if (priority < 0 || priority > 7) {
-      throw Exception(
-        '802.1p priority must be between 0 and 7.',
-      );
-    }
-
-    if (mtu < 576 || mtu > 1492) {
-      throw Exception(
-        'MTU must be between 576 and 1492.',
-      );
-    }
-
-    /*
-     * Huawei's X_HW_BindPhyPortInfo accepts a
-     * binding string. The browser request we
-     * captured used:
-     *
-     *     SSID1
-     *
-     * We therefore construct the binding from
-     * the selected LAN/SSID interfaces.
-     *
-     * If nothing is selected, we use SSID1,
-     * matching the Huawei form's normal default.
-     */
-    final bindings = <String>[
-      ...lanBindings,
-      ...ssidBindings,
-    ];
-
-    final bindPhyPortInfo = bindings.isEmpty
-        ? 'SSID1'
-        : bindings.join(',');
-
-    /*
-     * Huawei uses 0 when VLAN is disabled
-     * in the captured WAN configuration.
-     */
-    final effectiveVlan =
-        enableVlan ? vlanId : 0;
-
-    final uri = Uri.parse(
-      '$baseUrl/html/bbsp/wan/addcfg.cgi'
-      '?GROUP_a_x='
-      'InternetGatewayDevice.WANDevice.1.'
-      'WANConnectionDevice'
-      '&GROUP_a_y=GROUP_a_x.WANPPPConnection'
-      '&RequestFile='
-      'html/bbsp/wan/confirmwancfginfo.html',
-    );
-
-    final body = <String, String>{
-      'GROUP_a_y.Enable': '1',
-
-      'GROUP_a_y.X_HW_IPv4Enable': '1',
-      'GROUP_a_y.X_HW_IPv6Enable': '0',
-      'GROUP_a_y.X_HW_IPv6MultiCastVLAN': '-1',
-
-      'GROUP_a_y.X_HW_SERVICELIST': 'INTERNET',
-      'GROUP_a_y.X_HW_ExServiceList': '',
-
-      'GROUP_a_y.X_HW_VLAN':
-          effectiveVlan.toString(),
-
-      'GROUP_a_y.X_HW_PRI':
-          priority.toString(),
-
-      'GROUP_a_y.X_HW_PriPolicy':
-          'Specified',
-
-      'GROUP_a_y.X_HW_DefaultPri':
-          priority.toString(),
-
-      'GROUP_a_y.ConnectionType':
-          'IP_Routed',
-
-      'GROUP_a_y.X_HW_MultiCastVLAN':
-          '4294967295',
-
-      'GROUP_a_y.NATEnabled': '1',
-
-      'GROUP_a_y.X_HW_NatType': '0',
-
-      'GROUP_a_y.Username':
-          username.trim(),
-
-      'GROUP_a_y.Password':
-          password,
-
-      'GROUP_a_y.X_HW_LcpEchoReqCheck':
-          '0',
-
-      'GROUP_a_y.ConnectionTrigger':
-          'AlwaysOn',
-
-      'GROUP_a_y.DNSEnabled': '1',
-
-      'GROUP_a_y.MaxMRUSize':
-          mtu.toString(),
-
-      'GROUP_a_y.DNSOverrideAllowed':
-          '0',
-
-      'GROUP_a_y.DNSServers': '',
-
-      'GROUP_a_y.X_HW_BindPhyPortInfo':
-          bindPhyPortInfo,
-
-      'x.X_HW_Token': _token!,
-    };
-
-    final response = await http.post(
-      uri,
+  Future<List<Map<String, String>>> getWanStatus() async {
+    final response = await http.get(
+      Uri.parse(
+        '$baseUrl/html/bbsp/common/getwanlist.asp?'
+        '${DateTime.now().millisecondsSinceEpoch}',
+      ),
       headers: {
         ..._headers(),
-        'Content-Type':
-            'application/x-www-form-urlencoded',
-        'Origin': baseUrl,
         'Referer':
-            '$baseUrl/html/bbsp/wan/wan.asp',
+            '$baseUrl/html/bbsp/waninfo/waninfo.asp',
       },
-      body: body,
     );
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to add PPPoE WAN. '
-        'HTTP ${response.statusCode}.',
+        'WAN request failed: HTTP '
+        '${response.statusCode}',
       );
     }
 
-    /*
-     * Huawei may return a confirmation page or
-     * redirect after accepting the configuration.
-     *
-     * We don't treat the HTML itself as the
-     * source of truth. The caller will refresh
-     * the WAN list afterward.
-     */
-    return true;
+    final body = response.body;
+
+    final wanMatches = RegExp(
+      r'new\s+WanPPP\((.*?)\)',
+      dotAll: true,
+    ).allMatches(body);
+
+    if (wanMatches.isEmpty) {
+      throw Exception(
+        'No WAN connection was found.',
+      );
+    }
+
+    final wanList = <Map<String, String>>[];
+
+    for (final wanMatch in wanMatches) {
+      final raw = wanMatch.group(1);
+
+      if (raw == null || raw.isEmpty) {
+        continue;
+      }
+
+      final values = <String>[];
+
+      final valueRegex = RegExp(
+        r'"((?:\\.|[^"])*)"',
+      );
+
+      for (final match in valueRegex.allMatches(raw)) {
+        values.add(
+          _decodeHuaweiValue(
+            match.group(1)!,
+          ),
+        );
+      }
+
+      if (values.length < 25) {
+        continue;
+      }
+
+      String vlanId = values[22];
+
+      if (vlanId.isEmpty || vlanId == '0') {
+        vlanId = '-';
+      }
+
+      String ipAddress = values[13];
+
+      if (ipAddress.isEmpty) {
+        ipAddress = '0.0.0.0';
+      }
+
+      wanList.add({
+        'domain': values[0],
+        'wanName': values[7],
+        'status': values[4],
+        'ipAddress': ipAddress,
+        'vlanId': vlanId,
+      });
+    }
+
+    if (wanList.isEmpty) {
+      throw Exception(
+        'No usable WAN connection was found.',
+      );
+    }
+
+    return wanList;
   }
 
   String _decodeHuaweiValue(String value) {
