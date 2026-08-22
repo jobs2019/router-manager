@@ -197,68 +197,104 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
     );
   }
 
-  Widget _infoRow(String label, String? value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(width: 95, child: Text(label, style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500))),
-        Expanded(child: Text(value == null || value.isEmpty ? '--' : value, style: const TextStyle(fontWeight: FontWeight.w600))),
-      ],
-    ),
-  );
-
   Widget _buildWanCard() {
     if (_loadingWan) {
       return Card(
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade200)),
-        child: const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
       );
     }
     if (_wanData == null || _wanData!.isEmpty) return const SizedBox.shrink();
+
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade200)),
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(child: _sectionTitle('WAN Information', '${_wanData!.length} connection${_wanData!.length == 1 ? '' : 's'} detected')),
-                IconButton(tooltip: 'Refresh', onPressed: _loadingWan ? null : _loadWan, icon: const Icon(Icons.refresh_rounded)),
+                const Icon(Icons.public_rounded, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'WAN Information',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  '${_wanData!.length}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                ),
+                IconButton(
+                  tooltip: 'Refresh',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  onPressed: _loadingWan ? null : _loadWan,
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             ..._wanData!.asMap().entries.map((entry) {
               final index = entry.key;
               final wan = entry.value;
               final connected = (wan['status'] ?? '').toLowerCase() == 'connected';
+              final status = wan['status'] ?? '--';
+              final ip = wan['ipAddress'] ?? '--';
+              final vlan = wan['vlanId'] ?? '--';
+
               return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (index > 0) const Divider(height: 28),
-                  Row(
-                    children: [
-                      Expanded(child: Text(wan['wanName'] ?? '--', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: connected ? Colors.green.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
+                  if (index > 0) Divider(height: 1, color: Colors.grey.shade200),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                wan['wanName'] ?? '--',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'IP $ip  •  VLAN $vlan',
+                                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: Text(
-                          wan['status'] ?? '--',
-                          style: TextStyle(color: connected ? Colors.green.shade700 : Colors.orange.shade800, fontSize: 12, fontWeight: FontWeight.w700),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: connected ? Colors.green.withValues(alpha: 0.10) : Colors.orange.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: connected ? Colors.green.shade700 : Colors.orange.shade800,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  _infoRow('IP Address', wan['ipAddress']),
-                  _infoRow('VLAN ID', wan['vlanId']),
                 ],
               );
             }),
@@ -381,9 +417,9 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _buildWanCard(),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 _buildFeatureSection(),
               ],
             ],
