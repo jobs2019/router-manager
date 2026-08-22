@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/discovery_screen.dart';
+import 'screens/router_type_screen.dart';
 
 void main() {
   runApp(const RouterManagerApp());
@@ -16,7 +16,7 @@ class RouterManagerApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const DiscoveryScreen(),
+      home: const RouterTypeScreen(),
     );
   }
 }
