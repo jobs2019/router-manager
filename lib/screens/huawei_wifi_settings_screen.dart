@@ -68,25 +68,45 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
   }
 
   String? _extractCurrentSsid(String body) {
-    final nameMarker = 'name="y.SSID"';
-    final nameIndex = body.indexOf(nameMarker);
-    if (nameIndex < 0) return null;
+    // Huawei firmware is not consistent about attribute order, quote style,
+    // or whitespace. Find the input element containing name=y.SSID and then
+    // extract its value regardless of those harmless HTML differences.
+    final inputMatches = RegExp(r'<input\b[^>]*>', caseSensitive: false, dotAll: true).allMatches(body);
 
-    final inputStart = body.lastIndexOf('<input', nameIndex);
-    final inputEnd = body.indexOf('>', nameIndex);
-    if (inputStart < 0 || inputEnd < 0 || inputEnd <= inputStart) return null;
+    for (final match in inputMatches) {
+      final input = match.group(0) ?? '';
+      final hasSsidName = RegExp(
+        r'''\bname\s*=\s*["']y\.SSID["']''',
+        caseSensitive: false,
+      ).hasMatch(input);
+      if (!hasSsidName) continue;
 
-    final input = body.substring(inputStart, inputEnd + 1);
-    final valueMarker = 'value="';
-    final valueIndex = input.indexOf(valueMarker);
-    if (valueIndex < 0) return null;
+      final valueMatch = RegExp(
+        r'''\bvalue\s*=\s*["']([^"']*)["']''',
+        caseSensitive: false,
+      ).firstMatch(input);
+      final value = valueMatch?.group(1)?.trim() ?? '';
+      if (value.isNotEmpty) return _decodeHtml(value);
+    }
 
-    final valueStart = valueIndex + valueMarker.length;
-    final valueEnd = input.indexOf('"', valueStart);
-    if (valueEnd < 0) return null;
+    // Some firmware builds can render the field with escaped quotes inside
+    // generated JavaScript. Try a small direct search around y.SSID as well.
+    final ssidIndex = body.toLowerCase().indexOf('y.ssid');
+    if (ssidIndex >= 0) {
+      final start = body.lastIndexOf('<input', ssidIndex);
+      final end = body.indexOf('>', ssidIndex);
+      if (start >= 0 && end > start) {
+        final input = body.substring(start, end + 1);
+        final valueMatch = RegExp(
+          r'''\bvalue\s*=\s*["']([^"']*)["']''',
+          caseSensitive: false,
+        ).firstMatch(input);
+        final value = valueMatch?.group(1)?.trim() ?? '';
+        if (value.isNotEmpty) return _decodeHtml(value);
+      }
+    }
 
-    final value = input.substring(valueStart, valueEnd).trim();
-    return value.isEmpty ? null : _decodeHtml(value);
+    return null;
   }
 
   String _decodeHtml(String value) {
@@ -259,42 +279,41 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                           TextField(
                             controller: _ssidController,
                             maxLength: 32,
-                            autocorrect: false,
-                            enableSuggestions: false,
                             decoration: _decoration('Wi-Fi Name (SSID)'),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           TextField(
                             controller: _passwordController,
-                            obscureText: false,
                             maxLength: 63,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
+                            obscureText: false,
+                            decoration: _decoration('New Wi-Fi Password'),
                           ),
+                          const SizedBox(height: 4),
                           Text(
                             'The existing password is not read from telecomadmin. Enter a new password only when you want to change it.',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                            style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 56,
+                            child: FilledButton.icon(
+                              onPressed: _saving ? null : _save,
+                              icon: _saving
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.save_rounded),
+                              label: Text(_saving ? 'Applying...' : 'Save Wi-Fi Name & Password'),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(
+                            child: Text(
+                              'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 54,
-                      child: FilledButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: _saving
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.save_rounded),
-                        label: Text(_saving ? 'Saving...' : 'Save Wi-Fi Name & Password'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                   ],
                 ),
