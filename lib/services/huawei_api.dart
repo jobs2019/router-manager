@@ -212,6 +212,9 @@ class HuaweiApi {
     // The EG8145V5 page exposes the 2.4 GHz SSID in WlanWifiArr. Prefer
     // a direct scan of the array so harmless JavaScript formatting changes
     // do not prevent us from finding the ath0 entry.
+    final formSsid = _inputValue(body, 'y.SSID').trim();
+    if (formSsid.isNotEmpty) return formSsid;
+
     final arrayStart = body.indexOf('var WlanWifiArr');
     if (arrayStart < 0) throw Exception('Huawei did not expose WlanWifiArr on the 2.4 GHz page.');
 
