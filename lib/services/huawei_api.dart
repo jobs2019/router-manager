@@ -95,6 +95,7 @@ class HuaweiApi {
         'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
         'Referer': '$baseUrl/index.asp',
         'Upgrade-Insecure-Requests': '1',
+	'Connection': 'close',
       },
     );
     if (response.statusCode != 200) throw Exception('2.4 GHz Wi-Fi settings request failed: HTTP ${response.statusCode}');
