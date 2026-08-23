@@ -251,14 +251,28 @@ class HuaweiApi {
   }
 
   String _get2GSsidFromPage(String body) {
-    // Taken directly from the supplied EG8145V5 WlanBasic.asp structure:
-    // WlanWifiArr contains stWlanWifi(domain, name, enable, ssid, ...).
-    // The first entry is ath0 / WLANConfiguration.1 (2.4 GHz).
+    // The older, tested EG8145V5 flow reads the SSID directly from the
+    // y.SSID form field. Keep that as the primary source because Huawei's
+    // WlanWifiArr JavaScript representation varies between firmware builds.
+    final directSsid = _inputValue(body, 'y.SSID').trim();
+    if (directSsid.isNotEmpty && directSsid.toLowerCase() != 'undefined') {
+      return directSsid;
+    }
+
+    // Some firmware revisions expose the selected SSID as w1Ssid.
+    for (final field in ['w1Ssid', 'w1SSID']) {
+      final value = _inputValue(body, field).trim();
+      if (value.isNotEmpty && value.toLowerCase() != 'undefined') {
+        return value;
+      }
+    }
+
+    // Fallback for the supplied EG8145V5 WlanWifiArr structure.
+    // The router encodes dots/spaces as \xNN inside the JavaScript string.
     final match = RegExp(
-      r'''new\s+stWlanWifi\(\s*"((?:\\.|[^"])*)"\s*,\s*"ath0"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"''',
+      r'''new\s+stWlanWifi\s*\(\s*"((?:\\.|[^"])*)"\s*,\s*"ath0"\s*,\s*"((?:\\.|[^"])*)"\s*,\s*"((?:\\.|[^"])*)"''',
       dotAll: true,
     ).firstMatch(body);
-
     if (match != null) {
       final domain = _decodeHuaweiValue(match.group(1)!);
       final ssid = _decodeHuaweiValue(match.group(3)!).trim();
@@ -268,8 +282,7 @@ class HuaweiApi {
     }
 
     throw Exception(
-      'Huawei 2.4 GHz page did not contain the expected '
-      'stWlanWifi/ath0 WLANConfiguration.1 entry.',
+      'Huawei 2.4 GHz page did not expose the current Wi-Fi name.',
     );
   }
 
@@ -320,8 +333,6 @@ class HuaweiApi {
     const wlanDomain =
         'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1';
 
-    // Matches the supplied Huawei SubmitForm() path for HiLinkRoll=1:
-    // set.cgi?w=...WifiCoverSetWlanBasic&x=InternetGatewayDevice.LANDevice.1&y=<domain>
     final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(
       queryParameters: {
         'w': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
@@ -331,8 +342,6 @@ class HuaweiApi {
       },
     );
 
-    // Only SSID fields are sent. Password, security, WMM, broadcast,
-    // enable, and other Wi-Fi settings are intentionally untouched.
     final form = <String, String>{
       'y.SSID': trimmedSsid,
       'w.SsidInst': '1',
