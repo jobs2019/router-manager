@@ -95,10 +95,25 @@ class HuaweiApi {
         'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
         'Referer': '$baseUrl/index.asp',
         'Upgrade-Insecure-Requests': '1',
-	'Connection': 'close',
+        'Connection': 'close',
       },
     );
     if (response.statusCode != 200) throw Exception('2.4 GHz Wi-Fi settings request failed: HTTP ${response.statusCode}');
+    return response.body;
+  }
+
+  Future<String> _get2GWlanListPage() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/html/amp/common/wlan_list.asp'),
+      headers: {
+        ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        'Referer': '$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G',
+        'Upgrade-Insecure-Requests': '1',
+      },
+    );
+    if (response.statusCode != 200) throw Exception('Huawei WLAN list request failed: HTTP ${response.statusCode}');
     return response.body;
   }
 
@@ -209,10 +224,37 @@ class HuaweiApi {
     return null;
   }
 
+  String _get2GSsidFromWlanList(String body) {
+    final wlanInfoStart = body.indexOf('var WlanInfo');
+    if (wlanInfoStart < 0) {
+      throw Exception('Huawei WLAN list did not expose WlanInfo.');
+    }
+
+    var searchFrom = wlanInfoStart;
+    while (true) {
+      final call = _extractFunctionCall(body, 'stWlanInfo', searchFrom);
+      if (call == null) break;
+
+      final values = _quotedArguments(call);
+      if (values.length >= 6) {
+        final domain = values[0].trim();
+        final ssid = values[2].trim();
+        final band = values[5].trim();
+        final is2G = band == '2.4GHz' || band == '2.4 GHz';
+        final isPrimary2G = domain.endsWith('.WLANConfiguration.1');
+
+        if (is2G && isPrimary2G && ssid.isNotEmpty) return ssid;
+      }
+
+      final next = body.indexOf('new stWlanInfo(', searchFrom);
+      if (next < 0) break;
+      searchFrom = next + 1;
+    }
+
+    throw Exception('Huawei WLAN list did not expose the current 2.4 GHz Wi-Fi name.');
+  }
+
   String _get2GSsidFromPage(String body) {
-    // The captured EG8145V5 page exposes WLANs through WlanInfo, not
-    // WlanWifiArr. WlanInfo entries contain domain, interface name, SSID,
-    // service state, enable state, and RF band respectively.
     final wlanInfoStart = body.indexOf('var WlanInfo');
     if (wlanInfoStart >= 0) {
       var searchFrom = wlanInfoStart;
@@ -228,9 +270,7 @@ class HuaweiApi {
           final is2G = band == '2.4GHz' || band == '2.4 GHz';
           final isPrimary2G = domain.endsWith('.WLANConfiguration.1');
 
-          if (is2G && isPrimary2G && ssid.isNotEmpty) {
-            return ssid;
-          }
+          if (is2G && isPrimary2G && ssid.isNotEmpty) return ssid;
         }
 
         final next = body.indexOf('new stWlanInfo(', searchFrom);
@@ -239,12 +279,9 @@ class HuaweiApi {
       }
     }
 
-    // Keep the form-field fallback for firmware variants that expose y.SSID
-    // directly on the page.
     final formSsid = _inputValue(body, 'y.SSID').trim();
     if (formSsid.isNotEmpty) return formSsid;
 
-    // Keep the previous parser as a final fallback for other EG8145V5 builds.
     final arrayStart = body.indexOf('var WlanWifiArr');
     if (arrayStart >= 0) {
       final arrayEnd = body.indexOf(';', arrayStart);
@@ -279,9 +316,17 @@ class HuaweiApi {
 
   Future<HuaweiWifiSettings> get2GWifiSettings() async {
     final body = await _get2GBasicPage();
+    String ssid;
+    try {
+      final wlanListPage = await _get2GWlanListPage();
+      ssid = _get2GSsidFromWlanList(wlanListPage);
+    } catch (_) {
+      ssid = _get2GSsidFromPage(body);
+    }
+
     return HuaweiWifiSettings(
       enabled: _inputChecked(body, 'y.Enable', fallback: true),
-      ssid: _get2GSsidFromPage(body),
+      ssid: ssid,
       broadcastSsid: _inputChecked(body, 'y.SSIDAdvertisementEnabled', fallback: true),
       wmmEnabled: _inputChecked(body, 'w.WMMEnable', fallback: true),
       maxAssociateNum: int.tryParse(_inputValue(body, 'w.MaxAssociateNum')) ?? 32,
@@ -360,9 +405,6 @@ class HuaweiApi {
       body: body,
     );
 
-    // This firmware can return HTTP 404 after it has already accepted and
-    // applied the wireless configuration. Therefore 404 is not treated as
-    // an immediate failure. The verification request below is authoritative.
     if (response.statusCode != 200 && response.statusCode != 404) {
       throw Exception('Huawei did not accept the Wi-Fi request (HTTP ${response.statusCode}).');
     }
