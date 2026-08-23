@@ -84,7 +84,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
       if (!mounted) return;
       _passwordController.clear();
       setState(() {
-        _success = '2.4 GHz Wi-Fi name was verified as changed. The password was submitted to Huawei.';
+        _success = 'Huawei accepted the 2.4 GHz Wi-Fi name and password change. Your device may disconnect while the router applies it.';
       });
     } catch (e) {
       if (mounted) setState(() => _error = _cleanError(e));
@@ -222,14 +222,14 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                           const SizedBox(height: 8),
                           TextField(
                             controller: _passwordController,
-                            obscureText: false,
+                            obscureText: true,
                             maxLength: 63,
                             autocorrect: false,
                             enableSuggestions: false,
                             decoration: _decoration('New Wi-Fi Password', hint: 'Enter 8–63 characters'),
                           ),
                           Text(
-                            'The existing password is not read from telecomadmin. Enter the password you want the 2.4 GHz network to use.',
+                            'Enter the new password you want the 2.4 GHz network to use. The existing password is not displayed.',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
                         ],
@@ -248,7 +248,7 @@ class _HuaweiWifiSettingsScreenState extends State<HuaweiWifiSettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'The Wi-Fi connection may temporarily disconnect while Huawei applies the change.',
+                      'The router may temporarily disconnect your phone when it applies the new Wi-Fi name and password.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
