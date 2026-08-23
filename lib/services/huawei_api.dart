@@ -57,9 +57,6 @@ class HuaweiApi {
     final cookie = _cookie;
     try {
       if (cookie != null && cookie.isNotEmpty) {
-        // Huawei EG8145V5 firmware normally exposes logout.cgi. This is
-        // best-effort because some firmware revisions simply invalidate the
-        // session when the client stops using the cookie.
         await http.get(
           Uri.parse('$baseUrl/logout.cgi'),
           headers: {
@@ -69,8 +66,8 @@ class HuaweiApi {
         ).timeout(const Duration(seconds: 3));
       }
     } catch (_) {
-      // Local session cleanup below is still performed if the router does
-      // not expose the logout endpoint or the request times out.
+      // Local cleanup below is still performed if the router does not expose
+      // the endpoint or the request times out.
     } finally {
       _token = null;
       _cookie = null;
@@ -148,17 +145,50 @@ class HuaweiApi {
   }
 
   String _getOntToken(String body) {
-    final patterns = <RegExp>[
-      RegExp(r'''<input[^>]*name\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''', caseSensitive: false),
-      RegExp(r'''<input[^>]*value\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']onttoken["']''', caseSensitive: false),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(body);
-      if (match != null) {
-        final token = match.group(1)?.trim() ?? '';
-        if (token.isNotEmpty) return _decodeHtml(token);
+    final inputTags = RegExp(r'<input\b[^>]*>', caseSensitive: false, dotAll: true).allMatches(body);
+    final attributePattern = RegExp(r'''([A-Za-z_:][A-Za-z0-9_:.-]*)\s*=\s*(["'])(.*?)\2''', caseSensitive: false, dotAll: true);
+
+    for (final tagMatch in inputTags) {
+      final tag = tagMatch.group(0) ?? '';
+      final attributes = <String, String>{};
+      for (final attribute in attributePattern.allMatches(tag)) {
+        final name = attribute.group(1)?.toLowerCase();
+        final value = attribute.group(3) ?? '';
+        if (name != null) attributes[name] = value;
+      }
+      if (attributes['name']?.toLowerCase() == 'onttoken') {
+        final token = _decodeHtml(attributes['value'] ?? '').trim();
+        if (token.isNotEmpty) return token;
       }
     }
+
+    final jsPatterns = <RegExp>[
+      RegExp(r'''\bonttoken\b\s*[:=]\s*["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''["']onttoken["']\s*[,=:]\s*["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''["']onttoken["'][^{}]{0,500}?["']value["']\s*[:=]\s*["']([^"']+)["']''', caseSensitive: false, dotAll: true),
+    ];
+    for (final pattern in jsPatterns) {
+      final match = pattern.firstMatch(body);
+      final token = _decodeHtml(match?.group(1) ?? '').trim();
+      if (token.isNotEmpty) return token;
+    }
+
+    final lower = body.toLowerCase();
+    var searchFrom = 0;
+    final tokenPattern = RegExp(r'''["']([A-Za-z0-9_-]{24,128})["']''');
+    while (true) {
+      final marker = lower.indexOf('onttoken', searchFrom);
+      if (marker < 0) break;
+      final start = marker > 400 ? marker - 400 : 0;
+      final end = marker + 800 < body.length ? marker + 800 : body.length;
+      final section = body.substring(start, end);
+      for (final match in tokenPattern.allMatches(section)) {
+        final token = match.group(1)?.trim() ?? '';
+        if (token.length >= 32) return _decodeHtml(token);
+      }
+      searchFrom = marker + 'onttoken'.length;
+    }
+
     throw Exception('Huawei 2.4 GHz page did not provide onttoken.');
   }
 
