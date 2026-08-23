@@ -94,7 +94,17 @@ class HuaweiApi {
   }
 
   Future<String> _get2GBasicPage() async {
-    final response = await http.get(Uri.parse('$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G'), headers: {..._headers(), 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', 'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8', 'Referer': '$baseUrl/index.asp', 'Upgrade-Insecure-Requests': '1'});
+    final response = await http.get(
+      Uri.parse('$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G'),
+      headers: {
+        ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        'Connection': 'close',
+        'Referer': '$baseUrl/index.asp',
+        'Upgrade-Insecure-Requests': '1',
+      },
+    );
     if (response.statusCode != 200) throw Exception('2.4 GHz Wi-Fi settings request failed: HTTP ${response.statusCode}');
     return response.body;
   }
