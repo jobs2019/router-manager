@@ -120,9 +120,7 @@ class HuaweiApi {
       Uri.parse('$baseUrl/html/bbsp/common/getwanlist.asp?${DateTime.now().millisecondsSinceEpoch}'),
       headers: {..._headers(), 'Referer': '$baseUrl/html/bbsp/waninfo/waninfo.asp'},
     );
-    if (response.statusCode != 200) {
-      throw Exception('WAN request failed: HTTP ${response.statusCode}');
-    }
+    if (response.statusCode != 200) throw Exception('WAN request failed: HTTP ${response.statusCode}');
     final wanMatches = RegExp(r'new\s+WanPPP\((.*?)\)', dotAll: true).allMatches(response.body);
     if (wanMatches.isEmpty) throw Exception('No WAN connection was found.');
     final wanList = <Map<String, String>>[];
@@ -204,6 +202,7 @@ class HuaweiApi {
   }
 
   String _get2GSsidFromPage(String body) {
+    // Primary path from the known working Huawei WlanBasic.asp page.
     final direct = _inputValue(body, 'y.SSID').trim();
     if (direct.isNotEmpty && direct.toLowerCase() != 'undefined') return direct;
 
@@ -239,133 +238,8 @@ class HuaweiApi {
     );
   }
 
-  /// Restored dedicated 2.4 GHz WlanBasic save flow based on the captured
-  /// EG8145V5 browser request. This intentionally does not use the dual-band
-  /// simplewificfg save path, so WLANConfiguration.5 remains untouched.
-  Future<void> update2GWifiNameAndPassword({
-    required String ssid,
-    required String password,
-  }) async {
-    if (_token == null || _cookie == null) {
-      throw Exception('Huawei session is not available. Please log in again.');
-    }
-
-    final trimmedSsid = ssid.trim();
-    final trimmedPassword = password.trim();
-    if (trimmedSsid.isEmpty) {
-      throw Exception('Wi-Fi name cannot be empty.');
-    }
-    if (trimmedPassword.length < 8 || trimmedPassword.length > 63) {
-      throw Exception('Wi-Fi password must be 8–63 characters.');
-    }
-
-    final page = await _get2GBasicPage();
-    final pageToken = _findPageToken(page);
-    if (pageToken.isEmpty) {
-      throw Exception('Huawei 2.4 GHz page did not provide a save token.');
-    }
-
-    final query = <String, String>{
-      'w': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
-      'y': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1',
-      'z': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.WPS',
-      'k': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1',
-      'RequestFile': 'html/amp/wlanbasic/WlanBasic.asp',
-    };
-
-    final body = <String, String>{
-      'y.Enable': _inputChecked(page, 'y.Enable', fallback: true) ? '1' : '0',
-      'y.SSIDAdvertisementEnabled':
-          _inputChecked(page, 'y.SSIDAdvertisementEnabled', fallback: true) ? '1' : '0',
-      'y.SSID': trimmedSsid,
-      'y.BeaconType': _inputValue(page, 'y.BeaconType', fallback: 'WPAand11i'),
-      'y.X_HW_WPAand11iAuthenticationMode': _inputValue(
-        page,
-        'y.X_HW_WPAand11iAuthenticationMode',
-        fallback: 'PSKAuthentication',
-      ),
-      'y.X_HW_WPAand11iEncryptionModes': _inputValue(
-        page,
-        'y.X_HW_WPAand11iEncryptionModes',
-        fallback: 'TKIPandAESEncryption',
-      ),
-      'k.PreSharedKey': trimmedPassword,
-      'y.X_HW_GroupRekey': _inputValue(page, 'y.X_HW_GroupRekey', fallback: '3600'),
-      'z.Enable': _inputChecked(page, 'z.Enable') ? '1' : '0',
-      'z.X_HW_ConfigMethod': _inputValue(page, 'z.X_HW_ConfigMethod', fallback: 'PushButton'),
-      'w.SsidInst': _inputValue(page, 'w.SsidInst', fallback: '1'),
-      'w.SSID': trimmedSsid,
-      'w.Enable': _inputChecked(page, 'w.Enable', fallback: true) ? '1' : '0',
-      'w.Standard': _inputValue(page, 'w.Standard', fallback: '11bgn'),
-      'w.BasicAuthenticationMode': _inputValue(page, 'w.BasicAuthenticationMode', fallback: 'None'),
-      'w.BasicEncryptionModes': _inputValue(page, 'w.BasicEncryptionModes', fallback: 'TKIPandAESEncryption'),
-      'w.WPAAuthenticationMode': _inputValue(page, 'w.WPAAuthenticationMode', fallback: 'EAPAuthentication'),
-      'w.WPAEncryptionModes': _inputValue(page, 'w.WPAEncryptionModes', fallback: 'TKIPandAESEncryption'),
-      'w.IEEE11iAuthenticationMode': _inputValue(page, 'w.IEEE11iAuthenticationMode', fallback: 'EAPAuthentication'),
-      'w.IEEE11iEncryptionModes': _inputValue(page, 'w.IEEE11iEncryptionModes', fallback: 'TKIPandAESEncryption'),
-      'w.MixAuthenticationMode': _inputValue(page, 'w.MixAuthenticationMode', fallback: 'PSKAuthentication'),
-      'w.MixEncryptionModes': _inputValue(page, 'w.MixEncryptionModes', fallback: 'TKIPandAESEncryption'),
-      'w.SSIDAdvertisementEnabled':
-          _inputChecked(page, 'w.SSIDAdvertisementEnabled', fallback: true) ? '1' : '0',
-      'w.WMMEnable': _inputChecked(page, 'w.WMMEnable', fallback: true) ? '1' : '0',
-      'w.MaxAssociateNum': _inputValue(page, 'w.MaxAssociateNum', fallback: '32'),
-      'w.BeaconType': _inputValue(page, 'w.BeaconType', fallback: 'WPAand11i'),
-      'w.WEPEncryptionLevel': _inputValue(page, 'w.WEPEncryptionLevel', fallback: '104-bit'),
-      'w.WEPKeyIndex': _inputValue(page, 'w.WEPKeyIndex', fallback: '1'),
-      'w.Key': trimmedPassword,
-      'x.X_HW_Token': pageToken,
-    };
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query),
-      headers: {
-        ..._headers(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': baseUrl,
-        'Referer': '$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G',
-        'Upgrade-Insecure-Requests': '1',
-      },
-      body: body,
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Huawei 2.4 GHz Wi-Fi save failed: HTTP ${response.statusCode}');
-    }
-
-    final responseBody = response.body;
-    if (responseBody.toLowerCase().contains('login') &&
-        !responseBody.contains('top.location.replace')) {
-      throw Exception('Huawei session expired while saving 2.4 GHz Wi-Fi settings.');
-    }
-  }
-
-  Future<void> update2GWifiSettings({
-    required HuaweiWifiSettings settings,
-    String? password,
-  }) async {
-    final effectivePassword = password?.trim() ?? '';
-    if (effectivePassword.isEmpty) {
-      throw Exception('Enter the new Wi-Fi password to save the 2.4 GHz network.');
-    }
-    await update2GWifiNameAndPassword(
-      ssid: settings.ssid,
-      password: effectivePassword,
-    );
-  }
-
-  Future<void> update5GWifiSettings({
-    required HuaweiSimpleWifiBandSettings settings,
-    String? password,
-  }) async {
-    final simple = await getSimpleWifiSettings();
-    await updateSimpleWifiSettings(
-      band2G: simple.band2G,
-      band5G: settings,
-      password5G: password,
-    );
-  }
-
+  // This is intentionally the simplewificfg path captured from the working
+  // Huawei interface. It is the reliable path for changing the Wi-Fi key.
   Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async {
     final response = await http.get(
       Uri.parse('$baseUrl/html/amp/wlanbasic/simplewificfg.asp'),
@@ -442,6 +316,7 @@ class HuaweiApi {
       'RequestFile': 'html/amp/wlanbasic/simplewificfg.asp',
     };
 
+    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query);
     final body = <String, String>{
       'w0.SSID': band2G.ssid,
       'w0.SSIDAdvertisementEnabled': band2G.broadcastSsid ? '1' : '0',
@@ -461,64 +336,147 @@ class HuaweiApi {
       'm.WMMEnable5G': band5G.wmmEnabled ? '1' : '0',
       'm.STAIsolation5G': band5G.staIsolation ? '1' : '0',
       'm.MaxAssociateNum5G': band5G.maxAssociateNum.toString(),
+      'x.X_HW_Token': _token!,
     };
 
-    if (password2G != null && password2G.trim().isNotEmpty) {
-      body['psk1.PreSharedKey'] = password2G.trim();
-      body['m.Key'] = password2G.trim();
-    }
-    if (password5G != null && password5G.trim().isNotEmpty) {
-      body['psk5.PreSharedKey'] = password5G.trim();
-      body['m.Key5G'] = password5G.trim();
+    final trimmed2G = password2G?.trim() ?? '';
+    if (trimmed2G.isNotEmpty) {
+      body['psk1.PreSharedKey'] = trimmed2G;
+      body['m.Key'] = trimmed2G;
     }
 
-    final tokenPage = await getPage('/html/amp/wlanbasic/simplewificfg.asp');
-    body['x.X_HW_Token'] = _findPageToken(tokenPage);
+    final trimmed5G = password5G?.trim() ?? '';
+    if (trimmed5G.isNotEmpty) {
+      body['psk1.PreSharedKey'] = trimmed5G;
+      body['m.Key5G'] = trimmed5G;
+    }
 
     final response = await http.post(
-      Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query),
+      uri,
       headers: {
         ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Content-Type': 'application/x-www-form-urlencoded',
         'Origin': baseUrl,
         'Referer': '$baseUrl/html/amp/wlanbasic/simplewificfg.asp',
       },
       body: body,
     );
-
     if (response.statusCode != 200) {
-      throw Exception('Wi-Fi settings save failed: HTTP ${response.statusCode}');
+      throw Exception('Unable to save Wi-Fi settings (HTTP ${response.statusCode}).');
+    }
+    final responseBody = response.body.toLowerCase();
+    if (responseBody.contains('login.asp') && responseBody.contains('username')) {
+      throw Exception('Huawei session expired. Please log in again.');
     }
   }
 
-  String _decodeHtml(String value) {
-    return value
-        .replaceAll('&amp;', '&')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
+  Future<void> update2GWifiNameAndPassword({
+    required String ssid,
+    required String password,
+  }) async {
+    if (_cookie == null || _token == null) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+    final trimmedSsid = ssid.trim();
+    final trimmedPassword = password.trim();
+    if (trimmedSsid.isEmpty || trimmedSsid.length > 32) {
+      throw Exception('Wi-Fi name must contain 1–32 characters.');
+    }
+    if (trimmedPassword.length < 8 || trimmedPassword.length > 63) {
+      throw Exception('Wi-Fi password must contain 8–63 characters.');
+    }
+
+    // Read the simple dual-band configuration first so that changing 2.4 GHz
+    // does not overwrite the existing 5 GHz configuration.
+    final simple = await getSimpleWifiSettings();
+    final updated2G = HuaweiSimpleWifiBandSettings(
+      enabled: simple.band2G.enabled,
+      ssid: trimmedSsid,
+      broadcastSsid: simple.band2G.broadcastSsid,
+      wmmEnabled: simple.band2G.wmmEnabled,
+      staIsolation: simple.band2G.staIsolation,
+      maxAssociateNum: simple.band2G.maxAssociateNum,
+    );
+
+    try {
+      await updateSimpleWifiSettings(
+        band2G: updated2G,
+        band5G: simple.band5G,
+        password2G: trimmedPassword,
+      );
+    } on http.ClientException catch (e) {
+      // A Wi-Fi rename/password change can intentionally tear down the
+      // current HTTP connection. Do not report that as a failed save.
+      throw Exception('Huawei applied the Wi-Fi change but closed the connection: ${e.message}');
+    }
   }
+
+  Future<void> update2GWifiSettings({
+    required HuaweiWifiSettings settings,
+    String? password,
+  }) async {
+    if (password == null || password.trim().isEmpty) {
+      // Keep the legacy API usable for callers that only change the SSID.
+      if (_token == null || _cookie == null) {
+        throw Exception('Huawei session is not available. Please log in again.');
+      }
+      final page = await _get2GBasicPage();
+      final token = _getOntToken(page);
+      final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(
+        queryParameters: {
+          'w': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
+          'x': 'InternetGatewayDevice.LANDevice.1',
+          'y': 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1',
+          'RequestFile': 'html/amp/wlanbasic/WlanBasic.asp',
+        },
+      );
+      final response = await http.post(
+        uri,
+        headers: {
+          ..._headers(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': '$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G',
+          'Origin': baseUrl,
+        },
+        body: {
+          'y.SSID': settings.ssid,
+          'w.SsidInst': '1',
+          'w.SSID': settings.ssid,
+          'x.X_HW_Token': token,
+        },
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Unable to save 2.4 GHz Wi-Fi name (HTTP ${response.statusCode}).');
+      }
+      return;
+    }
+    await update2GWifiNameAndPassword(ssid: settings.ssid, password: password);
+  }
+
+  Future<void> update5GWifiSettings({
+    required HuaweiSimpleWifiBandSettings settings,
+    String? password,
+  }) async {
+    final simple = await getSimpleWifiSettings();
+    await updateSimpleWifiSettings(
+      band2G: simple.band2G,
+      band5G: settings,
+      password5G: password,
+    );
+  }
+
+  String _decodeHtml(String value) => value
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>');
 
   String _decodeHuaweiValue(String value) {
-    return value
-        .replaceAll(r'\"', '"')
-        .replaceAll(r'\\', r'\');
-  }
-
-  String _findPageToken(String body) {
-    final patterns = <RegExp>[
-      RegExp(r'''name=["']x\.X_HW_Token["'][^>]+value=["']([^"']+)["']''', caseSensitive: false),
-      RegExp(r'''value=["']([^"']+)["'][^>]+name=["']x\.X_HW_Token["']''', caseSensitive: false),
-      RegExp(r'''x\.X_HW_Token\s*=\s*["']([^"']+)["']''', caseSensitive: false),
-      RegExp(r'''X_HW_Token["']?\s*[,=:]\s*["']([^"']+)["']''', caseSensitive: false),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(body);
-      if (match != null && (match.group(1) ?? '').isNotEmpty) {
-        return match.group(1)!;
-      }
-    }
-    return '';
+    return value.replaceAllMapped(
+      RegExp(r'\\x([0-9A-Fa-f]{2})'),
+      (match) => String.fromCharCode(int.parse(match.group(1)!, radix: 16)),
+    );
   }
 }
