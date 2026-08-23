@@ -125,6 +125,7 @@ class HuaweiApi {
     final patterns = <RegExp>[
       RegExp(r'''<input[^>]*name\s*=\s*["']onttoken["'][^>]*value\s*=\s*["']([^"']+)["']''', caseSensitive: false),
       RegExp(r'''<input[^>]*value\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']onttoken["']''', caseSensitive: false),
+      RegExp(r'''(?:id|name)\s*:\s*["']onttoken["'][^}]*?value\s*:\s*["']([^"']+)["']''', caseSensitive: false, dotAll: true),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
@@ -136,110 +137,41 @@ class HuaweiApi {
     throw Exception('Huawei 2.4 GHz page did not provide onttoken.');
   }
 
-  List<String> _quotedArguments(String text) {
-    final values = <String>[];
-    var inQuote = false;
-    var escaped = false;
-    var buffer = StringBuffer();
-    for (var i = 0; i < text.length; i++) {
-      final char = text[i];
-      if (!inQuote) {
-        if (char == '"') {
-          inQuote = true;
-          buffer = StringBuffer();
-        }
-        continue;
-      }
-      if (escaped) {
-        buffer.write(char);
-        escaped = false;
-        continue;
-      }
-      if (char == '\\') {
-        buffer.write(char);
-        escaped = true;
-        continue;
-      }
-      if (char == '"') {
-        values.add(_decodeHuaweiValue(buffer.toString()));
-        inQuote = false;
-        continue;
-      }
-      buffer.write(char);
-    }
-    return values;
-  }
-
-  String? _extractFunctionCall(String body, String functionName, int startAt) {
-    final start = body.indexOf('new $functionName(', startAt);
-    if (start < 0) return null;
-    final open = body.indexOf('(', start);
-    if (open < 0) return null;
-    var depth = 0;
-    var inQuote = false;
-    var escaped = false;
-    for (var i = open; i < body.length; i++) {
-      final char = body[i];
-      if (inQuote) {
-        if (escaped) {
-          escaped = false;
-        } else if (char == '\\') {
-          escaped = true;
-        } else if (char == '"') {
-          inQuote = false;
-        }
-        continue;
-      }
-      if (char == '"') {
-        inQuote = true;
-        continue;
-      }
-      if (char == '(') depth++;
-      if (char == ')') {
-        depth--;
-        if (depth == 0) return body.substring(open + 1, i);
-      }
-    }
-    return null;
-  }
-
   String _get2GSsidFromPage(String body) {
-    // The tested EG8145V5 page exposes the selected 2.4 GHz SSID as w1Ssid.
-    // Use that exact field first; older WlanWifiArr parsing is only a fallback.
-    for (final field in ['w1Ssid', 'w1SSID', 'y.SSID']) {
-      final value = _inputValue(body, field).trim();
-      if (value.isNotEmpty && value.toLowerCase() != 'undefined') return value;
-    }
-
+    // EG8145V5 WlanBasic.asp exposes the 2.4 GHz fields inside the
+    // JavaScript WlanWifiArr object. They are not normal HTML inputs.
+    // The tested page shows an object with id/name w1Ssid and value=SSID.
     final arrayStart = body.indexOf('WlanWifiArr');
     if (arrayStart >= 0) {
-      final arrayEnd = body.indexOf(';', arrayStart);
-      final arrayText = arrayEnd > arrayStart ? body.substring(arrayStart, arrayEnd) : body.substring(arrayStart);
-      final calls = RegExp(r'new\s+stWlanWifi\s*\(([^)]*)\)', dotAll: true).allMatches(arrayText);
-      for (final match in calls) {
-        final values = _quotedArguments(match.group(1) ?? '');
-        if (values.length >= 3 && values[0].trim() == 'ath0') {
-          final ssid = values[2].trim();
-          if (ssid.isNotEmpty) return ssid;
+      final searchBody = body.substring(arrayStart);
+      final patterns = <RegExp>[
+        RegExp(r'''(?:id|name)\s*:\s*["']w1Ssid["'][^}]*?value\s*:\s*["']([^"']*)["']''', caseSensitive: false, dotAll: true),
+        RegExp(r'''value\s*:\s*["']([^"']*)["'][^}]*?(?:id|name)\s*:\s*["']w1Ssid["']''', caseSensitive: false, dotAll: true),
+      ];
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(searchBody);
+        if (match != null) {
+          final ssid = _decodeHtml(match.group(1) ?? '').trim();
+          if (ssid.isNotEmpty && ssid.toLowerCase() != 'undefined') return ssid;
         }
       }
     }
 
-    var searchFrom = 0;
-    while (true) {
-      final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
-      if (call == null) break;
-      final values = _quotedArguments(call);
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
-        if (ssid.isNotEmpty) return ssid;
+    // Some firmware revisions place the field outside WlanWifiArr.
+    final fallbackPatterns = <RegExp>[
+      RegExp(r'''(?:id|name)\s*:\s*["']w1Ssid["'][^}]*?value\s*:\s*["']([^"']*)["']''', caseSensitive: false, dotAll: true),
+      RegExp(r'''<input[^>]+name=["']w1Ssid["'][^>]+value=["']([^"']*)["']''', caseSensitive: false),
+      RegExp(r'''<input[^>]+value=["']([^"']*)["'][^>]+name=["']w1Ssid["']''', caseSensitive: false),
+    ];
+    for (final pattern in fallbackPatterns) {
+      final match = pattern.firstMatch(body);
+      if (match != null) {
+        final ssid = _decodeHtml(match.group(1) ?? '').trim();
+        if (ssid.isNotEmpty && ssid.toLowerCase() != 'undefined') return ssid;
       }
-      final next = body.indexOf('new stWlanWifi(', searchFrom);
-      if (next < 0) break;
-      searchFrom = next + 1;
     }
 
-    throw Exception('Huawei did not expose the current 2.4 GHz Wi-Fi name.');
+    throw Exception('Huawei 2.4 GHz page did not expose w1Ssid in WlanWifiArr.');
   }
 
   Future<HuaweiWifiSettings> get2GWifiSettings() async {
@@ -329,10 +261,19 @@ class HuaweiApi {
     await update2GWifiNameAndPassword(ssid: settings.ssid, password: password ?? '');
   }
 
-  Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async { throw Exception('5 GHz/simple Wi-Fi test is temporarily disabled.'); }
-  Future<void> updateSimpleWifiSettings({required HuaweiSimpleWifiBandSettings band2G, required HuaweiSimpleWifiBandSettings band5G, String? password2G, String? password5G}) async { throw Exception('5 GHz/simple Wi-Fi test is temporarily disabled.'); }
-  Future<void> update5GWifiSettings({required HuaweiSimpleWifiBandSettings settings, String? password}) async { throw Exception('5 GHz Wi-Fi test is temporarily disabled.'); }
+  Future<HuaweiSimpleWifiSettings> getSimpleWifiSettings() async {
+    throw Exception('5 GHz/simple Wi-Fi test is temporarily disabled.');
+  }
+
+  Future<void> updateSimpleWifiSettings({required HuaweiSimpleWifiBandSettings band2G, required HuaweiSimpleWifiBandSettings band5G, String? password2G, String? password5G}) async {
+    throw Exception('5 GHz/simple Wi-Fi test is temporarily disabled.');
+  }
+
+  Future<void> update5GWifiSettings({required HuaweiSimpleWifiBandSettings settings, String? password}) async {
+    throw Exception('5 GHz Wi-Fi test is temporarily disabled.');
+  }
 
   String _decodeHtml(String value) => value.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>');
+
   String _decodeHuaweiValue(String value) => value.replaceAllMapped(RegExp(r'\\x([0-9A-Fa-f]{2})'), (match) => String.fromCharCode(int.parse(match.group(1)!, radix: 16)));
 }
