@@ -120,7 +120,9 @@ class HuaweiApi {
       Uri.parse('$baseUrl/html/bbsp/common/getwanlist.asp?${DateTime.now().millisecondsSinceEpoch}'),
       headers: {..._headers(), 'Referer': '$baseUrl/html/bbsp/waninfo/waninfo.asp'},
     );
-    if (response.statusCode != 200) throw Exception('WAN request failed: HTTP ${response.statusCode}');
+    if (response.statusCode != 200) {
+      throw Exception('WAN request failed: HTTP ${response.statusCode}');
+    }
     final wanMatches = RegExp(r'new\s+WanPPP\((.*?)\)', dotAll: true).allMatches(response.body);
     if (wanMatches.isEmpty) throw Exception('No WAN connection was found.');
     final wanList = <Map<String, String>>[];
@@ -250,7 +252,9 @@ class HuaweiApi {
 
     final trimmedSsid = ssid.trim();
     final trimmedPassword = password.trim();
-    if (trimmedSsid.isEmpty) throw Exception('Wi-Fi name cannot be empty.');
+    if (trimmedSsid.isEmpty) {
+      throw Exception('Wi-Fi name cannot be empty.');
+    }
     if (trimmedPassword.length < 8 || trimmedPassword.length > 63) {
       throw Exception('Wi-Fi password must be 8–63 characters.');
     }
@@ -347,6 +351,18 @@ class HuaweiApi {
     await update2GWifiNameAndPassword(
       ssid: settings.ssid,
       password: effectivePassword,
+    );
+  }
+
+  Future<void> update5GWifiSettings({
+    required HuaweiSimpleWifiBandSettings settings,
+    String? password,
+  }) async {
+    final simple = await getSimpleWifiSettings();
+    await updateSimpleWifiSettings(
+      band2G: simple.band2G,
+      band5G: settings,
+      password5G: password,
     );
   }
 
@@ -491,15 +507,17 @@ class HuaweiApi {
   }
 
   String _findPageToken(String body) {
-    final patterns = [
-      RegExp(r'name=["\']x\.X_HW_Token["\'][^>]+value=["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'value=["\']([^"\']+)["\'][^>]+name=["\']x\.X_HW_Token["\']', caseSensitive: false),
-      RegExp(r'x\.X_HW_Token\s*=\s*["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'X_HW_Token["\']?\s*[,=:]\s*["\']([^"\']+)["\']', caseSensitive: false),
+    final patterns = <RegExp>[
+      RegExp(r'''name=["']x\.X_HW_Token["'][^>]+value=["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''value=["']([^"']+)["'][^>]+name=["']x\.X_HW_Token["']''', caseSensitive: false),
+      RegExp(r'''x\.X_HW_Token\s*=\s*["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''X_HW_Token["']?\s*[,=:]\s*["']([^"']+)["']''', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
-      if (match != null && (match.group(1) ?? '').isNotEmpty) return match.group(1)!;
+      if (match != null && (match.group(1) ?? '').isNotEmpty) {
+        return match.group(1)!;
+      }
     }
     return '';
   }
