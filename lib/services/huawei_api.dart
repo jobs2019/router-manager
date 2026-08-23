@@ -59,7 +59,7 @@ class HuaweiApi {
     if (pageResponse.statusCode != 200) throw Exception('Unable to obtain the current Huawei session token before logout (HTTP ${pageResponse.statusCode}).');
     final token = _getOntToken(pageResponse.body);
     final uri = Uri.parse('$baseUrl/logout.cgi').replace(queryParameters: {'RequestFile': 'html/logout.html'});
-    final response = await http.post(uri, headers: {..._headers(), 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', 'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8', 'Cache-Control': 'max-age=0', 'Content-Type': 'application/x-www-form-urlencoded', 'Origin': baseUrl, 'Referer': '$baseUrl/index.asp', 'Upgrade-Insecure-Requests': '1'}, body: {'x.X_HW_Token': token});
+    final response = await http.post(uri, headers: {..._headers(), 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8', 'Cache-Control': 'max-age=0', 'Content-Type': 'application/x-www-form-urlencoded', 'Origin': baseUrl, 'Referer': '$baseUrl/index.asp', 'Upgrade-Insecure-Requests': '1'}, body: {'x.X_HW_Token': token});
     if (response.statusCode != 200) throw Exception('Huawei logout failed (HTTP ${response.statusCode}).');
     _token = null;
     _cookie = null;
@@ -189,47 +189,92 @@ class HuaweiApi {
     return HuaweiWifiSettings(enabled: _inputChecked(body, 'y.Enable', fallback: true), ssid: _get2GSsidFromPage(body), broadcastSsid: _inputChecked(body, 'y.SSIDAdvertisementEnabled', fallback: true), wmmEnabled: _inputChecked(body, 'w.WMMEnable', fallback: true), maxAssociateNum: int.tryParse(_inputValue(body, 'w.MaxAssociateNum')) ?? 32, authenticationMode: 'PSKAuthentication', encryptionMode: 'TKIPandAESEncryption', groupRekey: int.tryParse(_inputValue(body, 'y.X_HW_GroupRekey')) ?? 3600, wpsEnabled: _inputChecked(body, 'z.Enable'));
   }
 
-  // SSID-only phase: password is intentionally not changed yet.
-  Future<void> update2GWifiNameAndPassword({required String ssid, required String password}) async {
-    if (_cookie == null) throw Exception('Huawei session is not available. Please log in again.');
+  // Commit A: restore the proven Huawei WlanBasic save flow for 2.4 GHz SSID only.
+  // Password fields are intentionally excluded in this commit.
+  // This targets WLANConfiguration.1 (2.4 GHz) and does not touch 5 GHz.
+  Future<void> update2GWifiNameAndPassword({
+    required String ssid,
+    required String password,
+  }) async {
+    if (_cookie == null || _cookie!.isEmpty) {
+      throw Exception('Huawei session is not available. Please log in again.');
+    }
+
     final trimmedSsid = ssid.trim();
-    if (trimmedSsid.isEmpty || trimmedSsid.length > 32) throw Exception('Wi-Fi name must contain 1–32 characters.');
+    if (trimmedSsid.isEmpty || trimmedSsid.length > 32) {
+      throw Exception('Wi-Fi name must contain 1–32 characters.');
+    }
 
     final page = await _get2GBasicPage();
-    final token = _getOntToken(page);
+    final pageToken = _getOntToken(page);
     final wlanDomain = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1';
 
-    // This matches the Huawei page's own SSID-only submission pattern:
-    // set.cgi?y=<wlanDomain>&RequestFile=html/amp/wlanbasic/WlanBasic.asp
-    // with y.SSID and the fresh x.X_HW_Token.
-    final uri = Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: {
+    final query = <String, String>{
+      'w': 'InternetGatewayDevice.X_HW_DEBUG.AMP.WifiCoverSetWlanBasic',
       'y': wlanDomain,
+      'z': '$wlanDomain.WPS',
+      'k': '$wlanDomain.PreSharedKey.1',
       'RequestFile': 'html/amp/wlanbasic/WlanBasic.asp',
-    });
+    };
+
+    final body = <String, String>{
+      'y.Enable': _inputChecked(page, 'y.Enable', fallback: true) ? '1' : '0',
+      'y.SSIDAdvertisementEnabled': _inputChecked(page, 'y.SSIDAdvertisementEnabled', fallback: true) ? '1' : '0',
+      'y.SSID': trimmedSsid,
+      'y.BeaconType': _inputValue(page, 'y.BeaconType', fallback: 'WPAand11i'),
+      'y.X_HW_WPAand11iAuthenticationMode': _inputValue(page, 'y.X_HW_WPAand11iAuthenticationMode', fallback: 'PSKAuthentication'),
+      'y.X_HW_WPAand11iEncryptionModes': _inputValue(page, 'y.X_HW_WPAand11iEncryptionModes', fallback: 'TKIPandAESEncryption'),
+      'y.X_HW_GroupRekey': _inputValue(page, 'y.X_HW_GroupRekey', fallback: '3600'),
+      'z.Enable': _inputChecked(page, 'z.Enable') ? '1' : '0',
+      'z.X_HW_ConfigMethod': _inputValue(page, 'z.X_HW_ConfigMethod', fallback: 'PushButton'),
+      'w.SsidInst': _inputValue(page, 'w.SsidInst', fallback: '1'),
+      'w.SSID': trimmedSsid,
+      'w.Enable': _inputChecked(page, 'w.Enable', fallback: true) ? '1' : '0',
+      'w.Standard': _inputValue(page, 'w.Standard', fallback: '11bgn'),
+      'w.BasicAuthenticationMode': _inputValue(page, 'w.BasicAuthenticationMode', fallback: 'None'),
+      'w.BasicEncryptionModes': _inputValue(page, 'w.BasicEncryptionModes', fallback: 'TKIPandAESEncryption'),
+      'w.WPAAuthenticationMode': _inputValue(page, 'w.WPAAuthenticationMode', fallback: 'EAPAuthentication'),
+      'w.WPAEncryptionModes': _inputValue(page, 'w.WPAEncryptionModes', fallback: 'TKIPandAESEncryption'),
+      'w.IEEE11iAuthenticationMode': _inputValue(page, 'w.IEEE11iAuthenticationMode', fallback: 'EAPAuthentication'),
+      'w.IEEE11iEncryptionModes': _inputValue(page, 'w.IEEE11iEncryptionModes', fallback: 'TKIPandAESEncryption'),
+      'w.MixAuthenticationMode': _inputValue(page, 'w.MixAuthenticationMode', fallback: 'PSKAuthentication'),
+      'w.MixEncryptionModes': _inputValue(page, 'w.MixEncryptionModes', fallback: 'TKIPandAESEncryption'),
+      'w.SSIDAdvertisementEnabled': _inputChecked(page, 'w.SSIDAdvertisementEnabled', fallback: true) ? '1' : '0',
+      'w.WMMEnable': _inputChecked(page, 'w.WMMEnable', fallback: true) ? '1' : '0',
+      'w.MaxAssociateNum': _inputValue(page, 'w.MaxAssociateNum', fallback: '32'),
+      'w.BeaconType': _inputValue(page, 'w.BeaconType', fallback: 'WPAand11i'),
+      'w.WEPEncryptionLevel': _inputValue(page, 'w.WEPEncryptionLevel', fallback: '104-bit'),
+      'w.WEPKeyIndex': _inputValue(page, 'w.WEPKeyIndex', fallback: '1'),
+      'x.X_HW_Token': pageToken,
+    };
+
+    // Commit A intentionally does not send password fields.
+    // Password handling will be restored in the separate password commit.
 
     final response = await http.post(
-      uri,
+      Uri.parse('$baseUrl/html/amp/wlanbasic/set.cgi').replace(queryParameters: query),
       headers: {
         ..._headers(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer': '$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G',
         'Origin': baseUrl,
+        'Referer': '$baseUrl/html/amp/wlanbasic/WlanBasic.asp?2G',
+        'Upgrade-Insecure-Requests': '1',
       },
-      body: {
-        'y.SSID': trimmedSsid,
-        'x.X_HW_Token': token,
-      },
+      body: body,
     );
 
     if (response.statusCode != 200 && response.statusCode != 404) {
-      throw Exception('Huawei did not accept the SSID request (HTTP ${response.statusCode}).');
+      throw Exception('Huawei 2.4 GHz Wi-Fi save failed: HTTP ${response.statusCode}');
     }
 
     final responseBody = response.body.toLowerCase();
-    if (response.statusCode == 200 && responseBody.contains('login.asp') && responseBody.contains('username')) {
-      throw Exception('Huawei session expired. Please log in again.');
+    if (responseBody.contains('login.asp') && responseBody.contains('username')) {
+      throw Exception('Huawei session expired while saving 2.4 GHz Wi-Fi settings.');
     }
 
+    // HTTP success is not treated as proof of a configuration change.
+    // Re-read the actual 2.4 GHz page and require the router to report the new SSID.
     Exception? lastVerificationError;
     for (var attempt = 0; attempt < 5; attempt++) {
       await Future<void>.delayed(Duration(milliseconds: 800 + (attempt * 500)));
@@ -237,11 +282,14 @@ class HuaweiApi {
         final verifyPage = await _get2GBasicPage();
         final actualSsid = _get2GSsidFromPage(verifyPage);
         if (actualSsid == trimmedSsid) return;
-        lastVerificationError = Exception('Huawei did not apply the requested 2.4 GHz Wi-Fi name. Current name is "$actualSsid".');
+        lastVerificationError = Exception(
+          'Huawei did not apply the requested 2.4 GHz Wi-Fi name. Current name is "$actualSsid".',
+        );
       } catch (e) {
         lastVerificationError = Exception(e.toString().replaceFirst('Exception: ', ''));
       }
     }
+
     throw lastVerificationError ?? Exception('Huawei did not confirm the requested 2.4 GHz Wi-Fi name.');
   }
 
