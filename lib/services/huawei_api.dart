@@ -209,40 +209,68 @@ class HuaweiApi {
   }
 
   String _get2GSsidFromPage(String body) {
-    // The EG8145V5 page exposes the 2.4 GHz SSID in WlanWifiArr. Prefer
-    // a direct scan of the array so harmless JavaScript formatting changes
-    // do not prevent us from finding the ath0 entry.
-    final formSsid = _inputValue(body, 'y.SSID').trim();
-    if (formSsid.isNotEmpty) return formSsid;
+    // The captured EG8145V5 page exposes WLANs through WlanInfo, not
+    // WlanWifiArr. WlanInfo entries contain domain, interface name, SSID,
+    // service state, enable state, and RF band respectively.
+    final wlanInfoStart = body.indexOf('var WlanInfo');
+    if (wlanInfoStart >= 0) {
+      var searchFrom = wlanInfoStart;
+      while (true) {
+        final call = _extractFunctionCall(body, 'stWlanInfo', searchFrom);
+        if (call == null) break;
 
-    final arrayStart = body.indexOf('var WlanWifiArr');
-    if (arrayStart < 0) throw Exception('Huawei did not expose WlanWifiArr on the 2.4 GHz page.');
+        final values = _quotedArguments(call);
+        if (values.length >= 6) {
+          final domain = values[0].trim();
+          final ssid = values[2].trim();
+          final band = values[5].trim();
+          final is2G = band == '2.4GHz' || band == '2.4 GHz';
+          final isPrimary2G = domain.endsWith('.WLANConfiguration.1');
 
-    final arrayEnd = body.indexOf(';', arrayStart);
-    final arrayText = arrayEnd > arrayStart ? body.substring(arrayStart, arrayEnd) : body.substring(arrayStart);
-    final calls = RegExp(r'new\s+stWlanWifi\s*\(([^)]*)\)', dotAll: true).allMatches(arrayText);
+          if (is2G && isPrimary2G && ssid.isNotEmpty) {
+            return ssid;
+          }
+        }
 
-    for (final match in calls) {
-      final values = _quotedArguments(match.group(1) ?? '');
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
-        if (ssid.isNotEmpty) return ssid;
+        final next = body.indexOf('new stWlanInfo(', searchFrom);
+        if (next < 0) break;
+        searchFrom = next + 1;
       }
     }
 
-    // Fallback: scan the full page in case the array is split by generated JS.
-    var searchFrom = arrayStart;
-    while (true) {
-      final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
-      if (call == null) break;
-      final values = _quotedArguments(call);
-      if (values.length >= 3 && values[0].trim() == 'ath0') {
-        final ssid = values[2].trim();
-        if (ssid.isNotEmpty) return ssid;
+    // Keep the form-field fallback for firmware variants that expose y.SSID
+    // directly on the page.
+    final formSsid = _inputValue(body, 'y.SSID').trim();
+    if (formSsid.isNotEmpty) return formSsid;
+
+    // Keep the previous parser as a final fallback for other EG8145V5 builds.
+    final arrayStart = body.indexOf('var WlanWifiArr');
+    if (arrayStart >= 0) {
+      final arrayEnd = body.indexOf(';', arrayStart);
+      final arrayText = arrayEnd > arrayStart ? body.substring(arrayStart, arrayEnd) : body.substring(arrayStart);
+      final calls = RegExp(r'new\s+stWlanWifi\s*\(([^)]*)\)', dotAll: true).allMatches(arrayText);
+
+      for (final match in calls) {
+        final values = _quotedArguments(match.group(1) ?? '');
+        if (values.length >= 3 && values[0].trim() == 'ath0') {
+          final ssid = values[2].trim();
+          if (ssid.isNotEmpty) return ssid;
+        }
       }
-      final next = body.indexOf('new stWlanWifi(', searchFrom);
-      if (next < 0) break;
-      searchFrom = next + 1;
+
+      var searchFrom = arrayStart;
+      while (true) {
+        final call = _extractFunctionCall(body, 'stWlanWifi', searchFrom);
+        if (call == null) break;
+        final values = _quotedArguments(call);
+        if (values.length >= 3 && values[0].trim() == 'ath0') {
+          final ssid = values[2].trim();
+          if (ssid.isNotEmpty) return ssid;
+        }
+        final next = body.indexOf('new stWlanWifi(', searchFrom);
+        if (next < 0) break;
+        searchFrom = next + 1;
+      }
     }
 
     throw Exception('Huawei did not expose the current 2.4 GHz Wi-Fi name.');
