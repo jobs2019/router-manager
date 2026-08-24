@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/huawei_api.dart';
+import 'huawei_wan_config_screen.dart';
 import 'huawei_wifi_settings_screen.dart';
 
 class HuaweiTestScreen extends StatefulWidget {
@@ -288,6 +289,21 @@ class _HuaweiTestScreenState extends State<HuaweiTestScreen> {
           title: '2.4 GHz Wi-Fi',
           subtitle: 'Change 2.4 GHz Wi-Fi name and password',
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HuaweiWifiSettingsScreen(api: _api))),
+        ),
+        const SizedBox(height: 10),
+        _featureTile(
+          icon: Icons.settings_ethernet_rounded,
+          title: 'WAN Configuration',
+          subtitle: 'Add and edit PPPoE Internet WAN settings',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => HuaweiWanConfigScreen(
+                routerIp: widget.routerIp,
+                username: _usernameController.text.trim(),
+                password: _passwordController.text,
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: 10),
         _featureTile(
