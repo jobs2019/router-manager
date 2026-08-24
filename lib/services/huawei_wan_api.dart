@@ -106,7 +106,7 @@ class HuaweiWanApi {
 
   Future<List<HuaweiWanConfiguration>> getWanConfigurations() async {
     final response = await http.get(
-      Uri.parse('$baseUrl/html/bbsp/common/wan_list_info.asp?${DateTime.now().millisecondsSinceEpoch}'),
+      Uri.parse('$baseUrl/html/bbsp/common/wan_list.asp?${DateTime.now().millisecondsSinceEpoch}'),
       headers: {
         ..._headers(),
         'Referer': '$baseUrl/html/bbsp/wan/wan.asp',
