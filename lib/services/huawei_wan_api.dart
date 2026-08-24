@@ -92,9 +92,9 @@ class HuaweiWanApi {
 
   String _extractOntToken(String body) {
     final patterns = <RegExp>[
-      RegExp(r'<input[^>]*name=["\']onttoken["\'][^>]*value=["\']([^"\']+)["\']', caseSensitive: false),
-      RegExp(r'<input[^>]*value=["\']([^"\']+)["\'][^>]*name=["\']onttoken["\']', caseSensitive: false),
-      RegExp(r'var\s+onttoken\s*=\s*["\']([^"\']+)["\']', caseSensitive: false),
+      RegExp(r'''<input[^>]*name=["']onttoken["'][^>]*value=["']([^"']+)["']''', caseSensitive: false),
+      RegExp(r'''<input[^>]*value=["']([^"']+)["'][^>]*name=["']onttoken["']''', caseSensitive: false),
+      RegExp(r'''var\s+onttoken\s*=\s*["']([^"']+)["']''', caseSensitive: false),
     ];
     for (final pattern in patterns) {
       final match = pattern.firstMatch(body);
