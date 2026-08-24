@@ -137,16 +137,23 @@ class HuaweiWanApi {
     for (final match in wanPattern.allMatches(body)) {
       final values = _parseHuaweiQuotedValues(match.group(1) ?? '');
       if (values.length < 39) continue;
+
+      // Huawei's WanPPP constructor fields are:
+      // 0 domain, 3 status, 6 display name, 17 username,
+      // 18 password, 21 VLAN ID.
       final domain = values[0];
-      final wanName = _domainToWanName(domain);
+      final wanName = values[6].trim().isNotEmpty
+          ? values[6].trim()
+          : _domainToWanName(domain);
+
       result.add(
         HuaweiWanConfiguration(
           domain: domain,
           wanName: wanName,
-          status: values[4],
-          vlanId: values[23],
-          username: values[19],
-          password: values[20],
+          status: values[3],
+          vlanId: values[21],
+          username: values[17],
+          password: values[18],
           bindings: List<String>.from(bindings[wanName] ?? const <String>[]),
         ),
       );
